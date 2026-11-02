@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://halo.example/contracts/artifact.schema.json",
+  "title": "Artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "phase", "version", "sha256", "status"],
+  "properties": {
+    "kind": { "type": "string" },
+    "phase": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "status": {
+      "enum": ["draft", "validated", "reviewed", "sealed", "superseded", "invalidated", "ready_for_review"]
+    },
+    "sealed_at": { "type": ["string", "null"] },
+    "content": { "type": "object" }
+  }
+}

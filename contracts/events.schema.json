@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://halo.example/contracts/events.schema.json",
+  "title": "OutboxEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "payload_ref", "status"],
+  "properties": {
+    "kind": {
+      "enum": [
+        "DiligenceRequested",
+        "ICDecisionRecorded",
+        "StageMoved",
+        "ConcernDispositionRecorded",
+        "ReviewRecorded"
+      ]
+    },
+    "payload_ref": { "type": "string" },
+    "status": { "enum": ["pending", "delivered", "failed"] }
+  }
+}

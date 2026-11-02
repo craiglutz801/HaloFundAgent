@@ -1,0 +1,5 @@
+{
+  "name": "halo-front-office",
+  "private": true,
+  "workspaces": ["apps/web"]
+}
