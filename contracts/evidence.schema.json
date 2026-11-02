@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://halo.example/contracts/evidence.schema.json",
+  "title": "EvidenceRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "locator", "excerpt", "origin_class", "status"],
+  "properties": {
+    "kind": { "type": "string" },
+    "locator": {
+      "type": "object",
+      "properties": {
+        "kind": { "enum": ["page", "sheet_cells", "text_offsets", "url_capture"] },
+        "page": { "type": "integer" },
+        "sheet": { "type": "string" },
+        "cells": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "excerpt": { "type": "string" },
+    "observed_start": { "type": ["string", "null"] },
+    "observed_end": { "type": ["string", "null"] },
+    "sample_size": { "type": "string" },
+    "origin_class": { "type": "string" },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "status": { "type": "string" }
+  }
+}

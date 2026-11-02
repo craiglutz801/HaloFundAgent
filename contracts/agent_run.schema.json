@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://halo.example/contracts/agent_run.schema.json",
+  "title": "AgentRun",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["agent_name", "phase", "status", "prompt_version", "schema_version", "provider"],
+  "properties": {
+    "agent_name": {
+      "enum": ["gm", "scout", "ainge", "xavier", "mutombo", "stockton", "sloan", "trainer", "scorekeeper"]
+    },
+    "phase": { "enum": ["independent", "comparison", "synthesis", "operating", "reporting"] },
+    "status": {
+      "enum": [
+        "queued",
+        "validating_inputs",
+        "running",
+        "validating_output",
+        "ready_for_review",
+        "reviewed",
+        "waiting_for_evidence",
+        "waiting_for_human",
+        "failed",
+        "cancelled",
+        "superseded",
+        "invalidated"
+      ]
+    },
+    "prompt_version": { "type": "string" },
+    "schema_version": { "type": "string" },
+    "provider": { "enum": ["fake", "openai", "anthropic"] },
+    "model": { "type": "string" },
+    "snapshot_id": { "type": "string", "format": "uuid" }
+  }
+}
