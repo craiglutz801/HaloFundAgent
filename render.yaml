@@ -1,13 +1,7 @@
 # Free public review host. Fictional companies only.
-# Render Postgres on the free plan expires 30 days after creation.
+# The web service is Render's free plan. The database is a free Neon Postgres
+# you create yourself, because a Render workspace can have only one free database.
 # The web service sleeps after 15 minutes without a request.
-
-databases:
-  - name: halo-fixture
-    plan: free
-    databaseName: halo_fixture
-    user: halo
-    postgresMajorVersion: "16"
 
 services:
   - type: web
@@ -30,13 +24,9 @@ services:
       - key: OBJECT_ROOT
         value: /tmp/object-store
       - key: DATABASE_URL
-        fromDatabase:
-          name: halo-fixture
-          property: connectionString
+        sync: false
       - key: MIGRATION_DATABASE_URL
-        fromDatabase:
-          name: halo-fixture
-          property: connectionString
+        sync: false
       - key: SESSION_SECRET
         generateValue: true
       - key: DEMO_ACCESS_CODE

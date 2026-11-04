@@ -16,9 +16,9 @@ Sign in as **Jordan Hale**. Fixture mode has no password.
 
 ## Public review copy
 
-Vercel’s free tier does not fit this app: the sign-in cookie and the database need one origin, and the API is a long-running Python process. Render’s free web service plus its free Postgres does. The blueprint is `render.yaml`.
+Vercel’s free tier does not fit this app: the sign-in cookie and the database need one origin, and the API is a long-running Python process. Render’s free web service does. A Render workspace can hold only one free Postgres database, so the database is a free Neon project instead. The blueprint is `render.yaml`.
 
-From the Render dashboard, create a Blueprint, choose this repository and the branch that contains `render.yaml`, and set `DEMO_ACCESS_CODE` to a passphrase of your own. Render prints an `https://…onrender.com` address when the deploy is healthy. The first open after a quiet period waits about a minute while the free instance wakes. The free database expires 30 days after it is created. The companies stay fictional, and anyone with the address and the access code shares that one copy.
+Create a Neon project and name the database `halo_fixture`. Copy its connection string. In the Render blueprint, set `DATABASE_URL` and `MIGRATION_DATABASE_URL` to that same string, and set `DEMO_ACCESS_CODE` to a passphrase of your own. Render prints an `https://…onrender.com` address when the deploy is healthy. The first open after a quiet period waits about a minute while the free instance wakes. Neon compute sleeps after a few idle minutes and wakes on the next query. The companies stay fictional, and anyone with the address and the access code shares that one copy.
 
 This environment cannot create the Render account. The blueprint is what gets deployed after you connect the repository.
 
