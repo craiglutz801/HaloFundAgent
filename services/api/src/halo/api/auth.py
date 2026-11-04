@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hmac
+
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
@@ -16,6 +18,9 @@ from halo.auth.sessions import (
 from halo.errors import HaloError
 from halo.services.read_model import me
 from halo.settings import get_settings
+from halo.util import sha256_hex
+
+DEMO_COOKIE = "halo_demo"
 
 router = APIRouter(prefix="/api/v1")
 
@@ -23,6 +28,31 @@ router = APIRouter(prefix="/api/v1")
 class FixtureLogin(BaseModel):
     model_config = ConfigDict(extra="forbid")
     principal_id: str
+
+
+class DemoAccess(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: str
+
+
+def _demo_digest() -> str:
+    settings = get_settings()
+    return sha256_hex(f"{settings.session_secret}:{settings.demo_access_code}".encode())
+
+
+def _demo_cookie_ok(request: Request) -> bool:
+    presented = request.cookies.get(DEMO_COOKIE, "")
+    if len(presented) != 64:
+        return False
+    return hmac.compare_digest(presented, _demo_digest())
+
+
+def _require_fixture_identity(request: Request) -> None:
+    settings = get_settings()
+    if settings.halo_mode not in {"fixture", "demo"}:
+        raise HaloError(404, "NOT_FOUND", "Not found.")
+    if settings.halo_mode == "demo" and not _demo_cookie_ok(request):
+        raise HaloError(401, "DEMO_ACCESS_REQUIRED", "Enter the demo access code first.")
 
 
 def _csrf_cookie(response: Response, token: str) -> None:
@@ -58,14 +88,49 @@ def csrf(response: Response) -> dict[str, str]:
     return {"csrf_token": token}
 
 
-@router.get("/auth/fixture-principals")
-def fixture_principals(db: Session = Depends(get_db)) -> dict[str, list[dict[str, str]]]:
-    if get_settings().halo_mode != "fixture":
+@router.get("/auth/demo-access")
+def demo_access_status(request: Request) -> dict[str, bool]:
+    settings = get_settings()
+    if settings.halo_mode != "demo":
+        return {"required": False, "accepted": True}
+    return {"required": True, "accepted": _demo_cookie_ok(request)}
+
+
+@router.post("/auth/demo-access")
+def accept_demo_access(body: DemoAccess, request: Request, response: Response) -> dict[str, bool]:
+    settings = get_settings()
+    if settings.halo_mode != "demo":
         raise HaloError(404, "NOT_FOUND", "Not found.")
+    assert_csrf(request.cookies.get(CSRF_COOKIE), request.headers.get(CSRF_HEADER))
+    offered = sha256_hex(f"{settings.session_secret}:{body.code}".encode())
+    if not hmac.compare_digest(offered, _demo_digest()):
+        raise HaloError(401, "DEMO_ACCESS_REQUIRED", "That access code is not valid.")
+    response.set_cookie(
+        DEMO_COOKIE,
+        offered,
+        httponly=True,
+        secure=settings.session_cookie_secure,
+        samesite="lax",
+        path="/",
+        max_age=settings.session_ttl_seconds,
+    )
+    return {"required": True, "accepted": True}
+
+
+@router.get("/auth/fixture-principals")
+def fixture_principals(
+    request: Request, db: Session = Depends(get_db)
+) -> dict[str, list[dict[str, str]]]:
+    _require_fixture_identity(request)
     rows = db.execute(text("SELECT id, display_name, email, role FROM halo_fixture_roster()")).all()
     return {
         "principals": [
-            {"id": str(row.id), "display_name": row.display_name, "email": row.email, "role": row.role}
+            {
+                "id": str(row.id),
+                "display_name": row.display_name,
+                "email": row.email,
+                "role": row.role,
+            }
             for row in rows
         ]
     }
@@ -78,8 +143,7 @@ def fixture_login(
     response: Response,
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
-    if get_settings().halo_mode != "fixture":
-        raise HaloError(404, "NOT_FOUND", "Not found.")
+    _require_fixture_identity(request)
     assert_csrf(request.cookies.get(CSRF_COOKIE), request.headers.get(CSRF_HEADER))
     token = new_session_token()
     try:

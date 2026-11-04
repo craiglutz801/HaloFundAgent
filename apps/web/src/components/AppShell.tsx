@@ -64,7 +64,11 @@ export function AppShell({
         </select>
       </div>
       <main className="main">
-        <div className="fixture-banner">Fixture workspace · fictional companies · no live capital</div>
+        <div className="fixture-banner">
+          {me.mode === "demo"
+            ? "Public demo · fictional companies · shared review copy"
+            : "Fixture workspace · fictional companies · no live capital"}
+        </div>
         <Outlet />
       </main>
     </div>

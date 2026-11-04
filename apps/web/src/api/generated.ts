@@ -18,6 +18,14 @@ export function getCsrf() {
   return api<{ csrf_token: string }>("/api/v1/auth/csrf");
 }
 
+export function getDemoAccess() {
+  return api<{ required: boolean; accepted: boolean }>("/api/v1/auth/demo-access");
+}
+
+export function postDemoAccess(body: JsonObject = {}) {
+  return api<{ required: boolean; accepted: boolean }>("/api/v1/auth/demo-access", { method: "POST", body: JSON.stringify(body) });
+}
+
 export function getFixturePrincipals() {
   return api<{ principals: RosterPerson[] }>("/api/v1/auth/fixture-principals");
 }

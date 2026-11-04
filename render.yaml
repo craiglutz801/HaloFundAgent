@@ -1,0 +1,43 @@
+# Free public review host. Fictional companies only.
+# Render Postgres on the free plan expires 30 days after creation.
+# The web service sleeps after 15 minutes without a request.
+
+databases:
+  - name: halo-fixture
+    plan: free
+    databaseName: halo_fixture
+    user: halo
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: halo-front-office
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: HALO_MODE
+        value: demo
+      - key: HALO_BIND_HOST
+        value: 0.0.0.0
+      - key: MODEL_PROVIDER
+        value: fake
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: OBJECT_STORE
+        value: local
+      - key: OBJECT_ROOT
+        value: /tmp/object-store
+      - key: DATABASE_URL
+        fromDatabase:
+          name: halo-fixture
+          property: connectionString
+      - key: MIGRATION_DATABASE_URL
+        fromDatabase:
+          name: halo-fixture
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DEMO_ACCESS_CODE
+        sync: false

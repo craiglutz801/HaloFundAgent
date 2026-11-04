@@ -14,6 +14,14 @@ You need Python 3.12, [uv](https://docs.astral.sh/uv/), Node.js 22, and PostgreS
 
 Sign in as **Jordan Hale**. Fixture mode has no password.
 
+## Public review copy
+
+Vercel’s free tier does not fit this app: the sign-in cookie and the database need one origin, and the API is a long-running Python process. Render’s free web service plus its free Postgres does. The blueprint is `render.yaml`.
+
+From the Render dashboard, create a Blueprint, choose this repository and the branch that contains `render.yaml`, and set `DEMO_ACCESS_CODE` to a passphrase of your own. Render prints an `https://…onrender.com` address when the deploy is healthy. The first open after a quiet period waits about a minute while the free instance wakes. The free database expires 30 days after it is created. The companies stay fictional, and anyone with the address and the access code shares that one copy.
+
+This environment cannot create the Render account. The blueprint is what gets deployed after you connect the repository.
+
 ## Other commands
 
 | Command | What it does |

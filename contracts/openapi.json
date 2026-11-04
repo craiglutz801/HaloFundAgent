@@ -28,6 +28,68 @@
         }
       }
     },
+    "/api/v1/auth/demo-access": {
+      "get": {
+        "summary": "Demo Access Status",
+        "operationId": "demo_access_status_api_v1_auth_demo_access_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "type": "object",
+                  "title": "Response Demo Access Status Api V1 Auth Demo Access Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Accept Demo Access",
+        "operationId": "accept_demo_access_api_v1_auth_demo_access_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DemoAccess"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "type": "object",
+                  "title": "Response Accept Demo Access Api V1 Auth Demo Access Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/fixture-principals": {
       "get": {
         "summary": "Fixture Principals",
@@ -812,6 +874,20 @@
           "policy_version"
         ],
         "title": "DecisionIn"
+      },
+      "DemoAccess": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "DemoAccess"
       },
       "DispositionIn": {
         "properties": {
