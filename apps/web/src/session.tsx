@@ -126,7 +126,10 @@ export function SignIn() {
   const [error, setError] = useState("");
   return (
     <main className="signin">
-      <p className="kicker">Halo Front Office</p>
+      <div className="brand-lockup">
+        <p className="kicker">Halo Front Office</p>
+        <img className="brand-mark" src="/halo-mark.jpg" alt="" width="44" height="44" />
+      </div>
       <h1>{session.needsAccessCode ? "Demo access" : "Fixture sign-in"}</h1>
       <p className="lede">
         These people are fictional. This copy does not use a commercial identity provider or live capital.

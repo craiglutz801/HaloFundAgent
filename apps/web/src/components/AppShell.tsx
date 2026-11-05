@@ -25,8 +25,11 @@ export function AppShell({
     <div className="app-shell">
       <aside className="rail">
         <div className="brand">
-          <strong>HALO</strong>
-          <span>Front Office</span>
+          <div>
+            <strong>HALO</strong>
+            <span>Front Office</span>
+          </div>
+          <img className="brand-mark" src="/halo-mark.jpg" alt="" width="44" height="44" />
         </div>
         <nav>
           {LINKS.map(([path, label]) => (
@@ -51,6 +54,10 @@ export function AppShell({
         </div>
       </aside>
       <div className="mobile-nav">
+        <div className="mobile-brand">
+          <span>Halo Front Office</span>
+          <img className="brand-mark" src="/halo-mark.jpg" alt="" width="36" height="36" />
+        </div>
         <select
           aria-label="Section"
           defaultValue={window.location.pathname}
