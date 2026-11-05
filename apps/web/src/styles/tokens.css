@@ -1,34 +1,52 @@
 :root {
-  --bg: #f4f7fb;
+  --bg: #f3f0e8;
+  --paper: #fffdf8;
+  --paper-2: #f7f3ea;
   --navy: #0b2146;
-  --navy-2: #14315f;
-  --ink: #152b4d;
-  --blue: #245ad9;
-  --blue-ink: #1c46ab;
-  --muted: #66788f;
-  --line: #dde5f0;
-  --white: #ffffff;
-  --purple: #7254b5;
-  --red: #9d2c3a;
-  --red-bg: #fdecee;
-  --amber: #8a5a12;
-  --amber-bg: #fff6e8;
-  --green: #1d6b45;
-  --green-bg: #e8f6ee;
-  --shadow: 0 10px 30px rgba(11, 33, 70, 0.06);
-  --radius: 14px;
-  --rail: 240px;
-  font-family: "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+  --navy-2: #16315f;
+  --ink: #1c2430;
+  --blue: #1d4e89;
+  --blue-ink: #163a68;
+  --muted: #6d6458;
+  --line: #e6e0d4;
+  --line-strong: #d4ccbc;
+  --gold: #b8893d;
+  --gold-soft: rgba(184, 137, 61, 0.16);
+  --white: #fffdf8;
+  --purple: #5d4a86;
+  --red: #8d3140;
+  --red-bg: #f8ecec;
+  --amber: #7a5420;
+  --amber-bg: #f8f0e2;
+  --green: #1e6844;
+  --green-bg: #e7f3ec;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 1px 2px rgba(28, 36, 48, 0.04), 0 18px 40px rgba(28, 36, 48, 0.05);
+  --radius: 18px;
+  --rail: 248px;
+  --serif: "Newsreader Variable", "Iowan Old Style", Palatino, "Palatino Linotype", serif;
+  --sans: "Schibsted Grotesk Variable", "Segoe UI", sans-serif;
+  font-family: var(--sans);
   color: var(--ink);
   background: var(--bg);
   font-size: 16px;
-  line-height: 1.45;
+  line-height: 1.5;
+  font-optical-sizing: auto;
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; }
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background:
+    radial-gradient(880px 420px at 110% -8%, rgba(184, 137, 61, 0.14), transparent 58%),
+    radial-gradient(640px 360px at -12% 8%, rgba(11, 33, 70, 0.05), transparent 52%),
+    var(--bg);
+}
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: var(--blue-ink); text-decoration: none; }
 a:hover { text-decoration: underline; }
-:focus-visible { outline: 3px solid #8eacf5; outline-offset: 2px; }
+::selection { background: #f0e2c4; color: var(--navy); }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
