@@ -1,5 +1,7 @@
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../api/client";
+import { getValueLedger } from "../api/generated";
+import { filterQuery } from "../api/queries";
 import { ValueStatus } from "../components/ValueStatus";
 
 type Ledger = {
@@ -18,9 +20,11 @@ type Ledger = {
 };
 
 export function ValueLedger({ principalId }: { principalId: string }) {
+  const [params] = useSearchParams();
+  const search = params.toString();
   const query = useQuery({
-    queryKey: ["value", principalId],
-    queryFn: () => api<Ledger>("/api/v1/value"),
+    queryKey: ["value", principalId, search],
+    queryFn: () => getValueLedger(filterQuery(search)) as Promise<Ledger>,
   });
   if (query.isLoading) return <div className="skeleton" />;
   const data = query.data;

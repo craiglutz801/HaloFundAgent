@@ -42,7 +42,13 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION halo_fixture_roster() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION halo_fixture_roster() TO halo_app;
+DO $halo_app_roster$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'halo_app') THEN
+    GRANT EXECUTE ON FUNCTION halo_fixture_roster() TO halo_app;
+  END IF;
+END
+$halo_app_roster$;
 """
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -19,7 +20,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    halo_mode: Literal["fixture", "live"] = "fixture"
+    halo_mode: Literal["fixture", "demo", "live"] = "fixture"
     halo_bind_host: str = "127.0.0.1"
     database_url: str = Field(
         default="postgresql+psycopg://halo_app:halo_app_fixture@127.0.0.1:5432/halo_fixture"
@@ -49,10 +50,17 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = False
     session_ttl_seconds: int = 60 * 60 * 12
     policy_version: str = "2026-10-06"
+    demo_access_code: str = ""
 
-    @field_validator("database_url", "migration_database_url")
+    @field_validator("database_url", "migration_database_url", mode="before")
     @classmethod
-    def require_driver(cls, value: str) -> str:
+    def normalize_postgres_url(cls, value: str) -> str:
+        if not isinstance(value, str):
+            return value
+        if value.startswith("postgres://"):
+            value = "postgresql+psycopg://" + value.removeprefix("postgres://")
+        elif value.startswith("postgresql://"):
+            value = "postgresql+psycopg://" + value.removeprefix("postgresql://")
         if value and not value.startswith("postgresql"):
             raise ValueError("Halo persists business records in PostgreSQL")
         return value
@@ -94,6 +102,41 @@ class Settings(BaseSettings):
             raise RuntimeError("fixture mode requires a database name containing 'fixture'")
         if "live" in _database_name(self.database_url):
             raise RuntimeError("refusing a database name that contains 'live'")
+
+    def assert_demo_boot(self) -> None:
+        """Public review host. Fictional data only, and the browser role is not the table owner."""
+        if self.halo_mode != "demo":
+            raise RuntimeError("demo identity is disabled")
+        external = os.environ.get("RENDER_EXTERNAL_URL", "").rstrip("/")
+        if external and (
+            self.app_origin.startswith("http://127.0.0.1")
+            or self.app_origin.startswith("http://localhost")
+        ):
+            self.app_origin = external
+        problems: list[str] = []
+        if self.model_provider != "fake":
+            problems.append("demo mode uses the fake model provider")
+        if self.model_provider_key:
+            problems.append("demo mode cannot carry a model provider key")
+        if self.oidc_issuer or self.oidc_client_id or self.oidc_client_secret:
+            problems.append("demo mode cannot use a live identity provider")
+        if not self.session_cookie_secure:
+            problems.append("demo mode requires SESSION_COOKIE_SECURE=true")
+        if len(self.session_secret) < 32:
+            problems.append("demo mode requires SESSION_SECRET of at least 32 characters")
+        if len(self.demo_access_code) < 8:
+            problems.append("demo mode requires DEMO_ACCESS_CODE of at least 8 characters")
+        if not self.app_origin.startswith("https://"):
+            problems.append("demo mode requires an https APP_ORIGIN")
+        if self.object_store != "local":
+            problems.append("demo mode uses the local object directory")
+        name = _database_name(self.database_url)
+        if "live" in name:
+            problems.append("demo mode refuses a database name that contains 'live'")
+        elif not any(token in name for token in ("fixture", "demo")):
+            problems.append("demo mode requires a database name containing 'fixture' or 'demo'")
+        if problems:
+            raise RuntimeError("; ".join(problems))
 
     @property
     def object_root_path(self) -> Path:

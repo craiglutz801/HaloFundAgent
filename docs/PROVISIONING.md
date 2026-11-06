@@ -1,5 +1,11 @@
 # Provisioning
 
+## Free public review host
+
+`render.yaml` is a Render Blueprint for a fictional demo. It is not a live deployment. `HALO_MODE=demo` refuses a live database name, a model provider key, and a real identity provider. The browser connects as `halo_app`, which does not own tables. You choose `DEMO_ACCESS_CODE` in the Render dashboard and type it once in the browser.
+
+The free web service sleeps after 15 minutes and is allowed 750 hours per workspace each month. The database is a Neon free project named `halo_fixture`: no credit card, 1 GB of storage, and compute that sleeps after a few idle minutes. Paste Neon’s connection string into both `DATABASE_URL` and `MIGRATION_DATABASE_URL`. A Render workspace can have only one free Postgres database, so this blueprint does not create one. Vercel’s hobby tier can host a frontend, but it does not provide this Postgres role split or a same-origin Python process, so it is not the host for this review copy.
+
 Fixture mode runs with no commercial credential. Live mode refuses to start until the checks in `halo.settings` pass. An unavailable provider returns `501 CAPABILITY_UNAVAILABLE` and no fabricated body.
 
 ## Required for `make dev`

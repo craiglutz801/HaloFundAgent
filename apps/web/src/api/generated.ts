@@ -18,6 +18,14 @@ export function getCsrf() {
   return api<{ csrf_token: string }>("/api/v1/auth/csrf");
 }
 
+export function getDemoAccess() {
+  return api<{ required: boolean; accepted: boolean }>("/api/v1/auth/demo-access");
+}
+
+export function postDemoAccess(body: JsonObject = {}) {
+  return api<{ required: boolean; accepted: boolean }>("/api/v1/auth/demo-access", { method: "POST", body: JSON.stringify(body) });
+}
+
 export function getFixturePrincipals() {
   return api<{ principals: RosterPerson[] }>("/api/v1/auth/fixture-principals");
 }
@@ -34,16 +42,16 @@ export function getMe() {
   return api<Me>("/api/v1/me");
 }
 
-export function getOverview() {
-  return api<Overview>("/api/v1/overview");
+export function getOverview(query: { q?: string | number; agent?: string | number; phase?: string | number; outcome?: string | number; scope?: string | number; monitor?: string | number; company?: string | number } = {}) {
+  return api<Overview>(withQuery("/api/v1/overview", query));
 }
 
-export function getCompanies(query: { stage?: string | number; q?: string | number; cursor?: string | number; limit?: string | number } = {}) {
-  return api<{ items: CompanyCard[] }>(withQuery("/api/v1/companies", query));
+export function getCompanies(query: { q?: string | number; agent?: string | number; phase?: string | number; outcome?: string | number; scope?: string | number; monitor?: string | number; company?: string | number; cursor?: string | number; limit?: string | number } = {}) {
+  return api<{ items: CompanyCard[]; counts?: { distinct_companies: number; processes: number }; applied_filters?: Record<string, unknown> }>(withQuery("/api/v1/companies", query));
 }
 
-export function getCompany(companyId: string) {
-  return api<CompanyDetail>(`/api/v1/companies/${companyId}`);
+export function getCompany(companyId: string, query: { q?: string | number; agent?: string | number; phase?: string | number; outcome?: string | number; scope?: string | number; monitor?: string | number } = {}) {
+  return api<CompanyDetail>(withQuery(`/api/v1/companies/${companyId}`, query));
 }
 
 export function searchEvidence(query: { q?: string | number } = {}) {
@@ -62,16 +70,16 @@ export function getRun(runId: string) {
   return api<JsonObject>(`/api/v1/runs/${runId}`);
 }
 
-export function getPortfolio() {
-  return api<JsonObject>("/api/v1/portfolio");
+export function getPortfolio(query: { q?: string | number; agent?: string | number; phase?: string | number; outcome?: string | number; scope?: string | number; monitor?: string | number; company?: string | number } = {}) {
+  return api<JsonObject>(withQuery("/api/v1/portfolio", query));
 }
 
-export function getValueLedger() {
-  return api<JsonObject>("/api/v1/value");
+export function getValueLedger(query: { q?: string | number; agent?: string | number; phase?: string | number; outcome?: string | number; scope?: string | number; monitor?: string | number; company?: string | number } = {}) {
+  return api<JsonObject>(withQuery("/api/v1/value", query));
 }
 
-export function getAgents() {
-  return api<JsonObject>("/api/v1/agents");
+export function getAgents(query: { q?: string | number; agent?: string | number; phase?: string | number; outcome?: string | number; scope?: string | number; monitor?: string | number; company?: string | number } = {}) {
+  return api<JsonObject>(withQuery("/api/v1/agents", query));
 }
 
 export function getReviewQueue() {

@@ -1,0 +1,33 @@
+# Free public review host. Fictional companies only.
+# The web service is Render's free plan. The database is a free Neon Postgres
+# you create yourself, because a Render workspace can have only one free database.
+# The web service sleeps after 15 minutes without a request.
+
+services:
+  - type: web
+    name: halo-front-office
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: HALO_MODE
+        value: demo
+      - key: HALO_BIND_HOST
+        value: 0.0.0.0
+      - key: MODEL_PROVIDER
+        value: fake
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: OBJECT_STORE
+        value: local
+      - key: OBJECT_ROOT
+        value: /tmp/object-store
+      - key: DATABASE_URL
+        sync: false
+      - key: MIGRATION_DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DEMO_ACCESS_CODE
+        sync: false

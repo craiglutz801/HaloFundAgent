@@ -1,0 +1,12 @@
+.git
+.venv
+node_modules
+apps/web/node_modules
+apps/web/dist
+var
+**/__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.tsbuildinfo
+.env

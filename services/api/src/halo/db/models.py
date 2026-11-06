@@ -159,7 +159,7 @@ class Company(Base):
         UniqueConstraint("organization_id", "workspace_id", "id", name="uq_companies_scope_id"),
         CheckConstraint(
             "stage IN ('discovered','first_look','diligence','ic_review','closing',"
-            "'owned','exited','passed','paused')",
+            "'owned','exited','passed','paused','term_sheet','partner_review')",
             name="ck_companies_stage",
         ),
         ForeignKeyConstraint(
@@ -184,6 +184,15 @@ class InvestmentCase(Base):
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("principals.id"), nullable=False)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     policy_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    phase: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False, default="open")
+    on_hold: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    monitor: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    phase_entered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    outcome_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reason_code: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    reason_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    next_review_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = _updated()
@@ -194,6 +203,12 @@ class InvestmentCase(Base):
             "case_type IN ('initial', 'follow_on', 'secondary', 'exit')",
             name="ck_cases_type",
         ),
+        CheckConstraint(
+            "phase IN ('sourcing','screening','partner_review','due_diligence',"
+            "'investment_committee','term_sheet','negotiation_closing','unknown')",
+            name="ck_cases_phase",
+        ),
+        CheckConstraint("outcome IN ('open','passed','portfolio')", name="ck_cases_outcome"),
         ForeignKeyConstraint(
             ["organization_id", "workspace_id"],
             ["workspaces.organization_id", "workspaces.id"],
@@ -206,6 +221,59 @@ class InvestmentCase(Base):
         ),
         Index("ix_cases_ws_created", "workspace_id", desc("created_at")),
         Index("ix_cases_due", "due_at"),
+        Index("ix_cases_company_phase", "company_id", "phase", "outcome"),
+    )
+
+
+class AgentAssignment(Base):
+    """One project an agent performs for a company. The same agent may hold several."""
+
+    __tablename__ = "agent_assignments"
+
+    id: Mapped[uuid.UUID] = _id()
+    organization_id: Mapped[uuid.UUID] = mapped_column(UUID_PK, nullable=False)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID_PK, nullable=False)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID_PK, nullable=False)
+    agent_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    investment_process_id: Mapped[uuid.UUID | None] = mapped_column(UUID_PK)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    objective: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("principals.id"), nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("principals.id"), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    blocked_reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    waiting_on: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    agent_config_version: Mapped[str] = mapped_column(String(32), nullable=False, default="v1")
+    supersedes_assignment_id: Mapped[uuid.UUID | None] = mapped_column(UUID_PK)
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = _updated()
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "workspace_id", "id", name="uq_assignments_scope_id"),
+        CheckConstraint(
+            "status IN ('queued','active','waiting_for_input','blocked','paused','completed','cancelled')",
+            name="ck_assignments_status",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id"],
+            ["workspaces.organization_id", "workspaces.id"],
+            name="fk_assignments_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "company_id"],
+            ["companies.organization_id", "companies.workspace_id", "companies.id"],
+            name="fk_assignments_company",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "investment_process_id"],
+            ["investment_cases.organization_id", "investment_cases.workspace_id", "investment_cases.id"],
+            name="fk_assignments_process",
+        ),
+        Index("ix_assignments_company_agent_status", "company_id", "agent_id", "status"),
+        Index("ix_assignments_process", "investment_process_id"),
     )
 
 
@@ -395,6 +463,7 @@ class AgentRun(Base):
     organization_id: Mapped[uuid.UUID] = mapped_column(UUID_PK, nullable=False)
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID_PK, nullable=False)
     case_id: Mapped[uuid.UUID | None] = mapped_column(UUID_PK)
+    assignment_id: Mapped[uuid.UUID | None] = mapped_column(UUID_PK)
     agent_name: Mapped[str] = mapped_column(String(32), nullable=False)
     phase: Mapped[str] = mapped_column(String(64), nullable=False)
     snapshot_id: Mapped[uuid.UUID | None] = mapped_column(UUID_PK)
@@ -408,11 +477,18 @@ class AgentRun(Base):
     config_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     budget_id: Mapped[uuid.UUID | None] = mapped_column(UUID_PK)
     status_detail: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = _updated()
 
     __table_args__ = (
         UniqueConstraint("organization_id", "workspace_id", "id", name="uq_runs_scope_id"),
+        ForeignKeyConstraint(
+            ["organization_id", "workspace_id", "assignment_id"],
+            ["agent_assignments.organization_id", "agent_assignments.workspace_id", "agent_assignments.id"],
+            name="fk_runs_assignment",
+        ),
+        Index("ix_runs_assignment_created", "assignment_id", desc("created_at")),
         ForeignKeyConstraint(
             ["organization_id", "workspace_id"],
             ["workspaces.organization_id", "workspaces.id"],

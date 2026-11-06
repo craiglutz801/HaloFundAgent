@@ -1,10 +1,11 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useOverview } from "../api/queries";
 import { formatWhen, stageLabel } from "../api/types";
 import { MetricFreshness } from "../components/MetricFreshness";
 
 export function Overview({ principalId }: { principalId: string }) {
-  const query = useOverview(principalId);
+  const [params] = useSearchParams();
+  const query = useOverview(principalId, params.toString());
   if (query.isLoading) return <div className="skeleton" />;
   if (!query.data) return <p className="empty">Overview is unavailable.</p>;
   const data = query.data;
@@ -72,7 +73,7 @@ export function Overview({ principalId }: { principalId: string }) {
           ))}
         </section>
         <section className="card">
-          <h2>Stages you can see</h2>
+          <h2>Open processes you can see</h2>
           {data.stage_counts
             .filter((item) => item.count > 0)
             .map((item) => (

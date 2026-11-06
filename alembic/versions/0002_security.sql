@@ -225,14 +225,20 @@ REVOKE ALL ON FUNCTION halo_open_fixture_session(uuid, text, integer) FROM PUBLI
 REVOKE ALL ON FUNCTION halo_resolve_session(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION halo_revoke_session(text) FROM PUBLIC;
 
-GRANT EXECUTE ON FUNCTION halo_current_principal() TO halo_app;
-GRANT EXECUTE ON FUNCTION halo_shares_org(uuid) TO halo_app;
-GRANT EXECUTE ON FUNCTION halo_can_read_workspace(uuid, uuid) TO halo_app;
-GRANT EXECUTE ON FUNCTION halo_has_capability(uuid, uuid, text) TO halo_app;
-GRANT EXECUTE ON FUNCTION halo_can_read_evidence(uuid, uuid, uuid) TO halo_app;
-GRANT EXECUTE ON FUNCTION halo_open_fixture_session(uuid, text, integer) TO halo_app;
-GRANT EXECUTE ON FUNCTION halo_resolve_session(text) TO halo_app;
-GRANT EXECUTE ON FUNCTION halo_revoke_session(text) TO halo_app;
+DO $halo_app_execute$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'halo_app') THEN
+    GRANT EXECUTE ON FUNCTION halo_current_principal() TO halo_app;
+    GRANT EXECUTE ON FUNCTION halo_shares_org(uuid) TO halo_app;
+    GRANT EXECUTE ON FUNCTION halo_can_read_workspace(uuid, uuid) TO halo_app;
+    GRANT EXECUTE ON FUNCTION halo_has_capability(uuid, uuid, text) TO halo_app;
+    GRANT EXECUTE ON FUNCTION halo_can_read_evidence(uuid, uuid, uuid) TO halo_app;
+    GRANT EXECUTE ON FUNCTION halo_open_fixture_session(uuid, text, integer) TO halo_app;
+    GRANT EXECUTE ON FUNCTION halo_resolve_session(text) TO halo_app;
+    GRANT EXECUTE ON FUNCTION halo_revoke_session(text) TO halo_app;
+  END IF;
+END
+$halo_app_execute$;
 
 CREATE OR REPLACE FUNCTION halo_reject_direct_stage_update() RETURNS trigger
 LANGUAGE plpgsql
@@ -590,34 +596,39 @@ FOR UPDATE
 USING (principal_id = halo_current_principal())
 WITH CHECK (principal_id = halo_current_principal());
 
-GRANT USAGE ON SCHEMA public TO halo_app;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO halo_app;
-GRANT INSERT ON
-  reviews,
-  decisions,
-  concern_dispositions,
-  stage_events,
-  audit_events,
-  outbox_events,
-  notifications,
-  idempotency_keys
-TO halo_app;
-GRANT UPDATE ON
-  companies,
-  investment_cases,
-  concerns,
-  ic_packets,
-  notifications
-TO halo_app;
-GRANT UPDATE (response_json, status_code) ON idempotency_keys TO halo_app;
-
-REVOKE ALL ON sessions FROM halo_app;
-REVOKE UPDATE, DELETE ON
-  decisions,
-  reviews,
-  concern_dispositions,
-  evidence_snapshots,
-  snapshot_evidence,
-  audit_events,
-  stage_events
-FROM halo_app;
+DO $halo_app_tables$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'halo_app') THEN
+    GRANT USAGE ON SCHEMA public TO halo_app;
+    GRANT SELECT ON ALL TABLES IN SCHEMA public TO halo_app;
+    GRANT INSERT ON
+      reviews,
+      decisions,
+      concern_dispositions,
+      stage_events,
+      audit_events,
+      outbox_events,
+      notifications,
+      idempotency_keys
+    TO halo_app;
+    GRANT UPDATE ON
+      companies,
+      investment_cases,
+      concerns,
+      ic_packets,
+      notifications
+    TO halo_app;
+    GRANT UPDATE (response_json, status_code) ON idempotency_keys TO halo_app;
+    REVOKE ALL ON sessions FROM halo_app;
+    REVOKE UPDATE, DELETE ON
+      decisions,
+      reviews,
+      concern_dispositions,
+      evidence_snapshots,
+      snapshot_evidence,
+      audit_events,
+      stage_events
+    FROM halo_app;
+  END IF;
+END
+$halo_app_tables$;

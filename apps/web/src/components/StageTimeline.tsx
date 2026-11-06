@@ -1,11 +1,11 @@
-import { STAGES, stageLabel } from "../api/types";
+import { PHASES, phaseLabel } from "../api/types";
 
-export function StageTimeline({ stage }: { stage: string }) {
+export function StageTimeline({ phase }: { phase: string }) {
   return (
-    <div className="timeline" aria-label="Company stage">
-      {STAGES.map((item) => (
-        <span key={item} className={item === stage ? "current" : undefined}>
-          {stageLabel(item)}
+    <div className="timeline" aria-label="Investment phase">
+      {PHASES.map((item) => (
+        <span key={item} className={item === phase ? "current" : undefined}>
+          {phaseLabel(item)}
         </span>
       ))}
     </div>

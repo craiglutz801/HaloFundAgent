@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import os
 
 import uvicorn
 
+from halo.db.session import reset_engines
+from halo.services.demo_host import prepare_demo_database
 from halo.services.reset import reset_fixtures
 from halo.services.seed import seed
-from halo.settings import get_settings
+from halo.settings import clear_settings_cache, get_settings
 
 
 def main() -> None:
@@ -28,10 +31,18 @@ def main() -> None:
         reset_fixtures(settings)
         print("reset")
     elif args.command == "serve":
+        if settings.halo_mode == "demo":
+            os.environ["DATABASE_URL"] = prepare_demo_database(settings)
+            clear_settings_cache()
+            reset_engines()
+            settings = get_settings()
         host = args.host or settings.halo_bind_host
+        port = int(os.environ["PORT"]) if os.environ.get("PORT") else args.port
         if settings.halo_mode == "fixture" and host not in {"127.0.0.1", "localhost", "::1"}:
             raise SystemExit("fixture mode must bind to local development access")
-        uvicorn.run("halo.main:app", host=host, port=args.port, factory=False)
+        if settings.halo_mode == "demo" and host in {"127.0.0.1", "localhost", "::1"}:
+            raise SystemExit("demo mode must bind on the platform address, not loopback")
+        uvicorn.run("halo.main:app", host=host, port=port, factory=False)
     else:
         raise SystemExit(f"unknown command {args.command}")
 
