@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from halo.api.deps import get_db
 from halo.db.models import Organization, Principal, WorkspaceMembership
+from halo.domain.lifecycle import CompanyFilter, parse_filter
 from halo.errors import HaloError
 from halo.services import read_model
 
@@ -21,37 +22,86 @@ def _require(request: Request) -> str:
     return principal_id
 
 
+def _filters(
+    q: str | None,
+    agent: str | None,
+    phase: str | None,
+    outcome: str | None,
+    scope: str | None,
+    monitor: str | None,
+    company: str | None,
+    *,
+    funnel: bool,
+) -> CompanyFilter:
+    safe = None
+    if q:
+        safe = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return parse_filter(
+        q=safe,
+        agent=agent,
+        phase=phase,
+        outcome=outcome,
+        scope=scope,
+        monitor=monitor,
+        company=company,
+        funnel=funnel,
+    )
+
+
 @router.get("/overview")
-def overview(request: Request, db: Session = Depends(get_db)) -> dict:
-    return read_model.overview(db, _require(request))
+def overview(
+    request: Request,
+    db: Session = Depends(get_db),
+    q: str | None = None,
+    agent: str | None = None,
+    phase: str | None = None,
+    outcome: str | None = None,
+    scope: str | None = None,
+    monitor: str | None = None,
+    company: str | None = None,
+) -> dict:
+    filt = _filters(q, agent, phase, outcome, scope, monitor, company, funnel=False)
+    return read_model.overview(db, _require(request), filt)
 
 
 @router.get("/companies")
 def companies(
     request: Request,
     db: Session = Depends(get_db),
-    stage: str | None = None,
     q: str | None = None,
+    agent: str | None = None,
+    phase: str | None = None,
+    outcome: str | None = None,
+    scope: str | None = None,
+    monitor: str | None = None,
+    company: str | None = None,
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
 ) -> dict:
     _require(request)
-    safe = ""
-    if q:
-        safe = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return read_model.list_companies(db, stage=stage, query=safe or None, cursor=cursor, limit=limit)
+    filt = _filters(q, agent, phase, outcome, scope, monitor, company, funnel=True)
+    return read_model.list_companies(db, filt=filt, cursor=cursor, limit=limit)
 
 
 @router.get("/companies/{company_id}")
-def company(company_id: UUID, request: Request, db: Session = Depends(get_db)) -> dict:
+def company(
+    company_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    q: str | None = None,
+    agent: str | None = None,
+    phase: str | None = None,
+    outcome: str | None = None,
+    scope: str | None = None,
+    monitor: str | None = None,
+) -> dict:
     _require(request)
-    return read_model.company_detail(db, company_id)
+    filt = _filters(q, agent, phase, outcome, scope, monitor, None, funnel=False)
+    return read_model.company_detail(db, company_id, filt)
 
 
 @router.get("/evidence")
-def search_evidence(
-    request: Request, db: Session = Depends(get_db), q: str = ""
-) -> dict:
+def search_evidence(request: Request, db: Session = Depends(get_db), q: str = "") -> dict:
     _require(request)
     return read_model.search_evidence(db, q)
 
@@ -75,21 +125,57 @@ def run(run_id: UUID, request: Request, db: Session = Depends(get_db)) -> dict:
 
 
 @router.get("/portfolio")
-def portfolio(request: Request, db: Session = Depends(get_db)) -> dict:
+def portfolio(
+    request: Request,
+    db: Session = Depends(get_db),
+    q: str | None = None,
+    agent: str | None = None,
+    phase: str | None = None,
+    outcome: str | None = None,
+    scope: str | None = None,
+    monitor: str | None = None,
+    company: str | None = None,
+) -> dict:
     _require(request)
-    return read_model.portfolio(db)
+    return read_model.portfolio(
+        db, _filters(q, agent, phase, outcome, scope, monitor, company, funnel=False)
+    )
 
 
 @router.get("/value")
-def value(request: Request, db: Session = Depends(get_db)) -> dict:
+def value(
+    request: Request,
+    db: Session = Depends(get_db),
+    q: str | None = None,
+    agent: str | None = None,
+    phase: str | None = None,
+    outcome: str | None = None,
+    scope: str | None = None,
+    monitor: str | None = None,
+    company: str | None = None,
+) -> dict:
     _require(request)
-    return read_model.value_ledger(db)
+    return read_model.value_ledger(
+        db, _filters(q, agent, phase, outcome, scope, monitor, company, funnel=False)
+    )
 
 
 @router.get("/agents")
-def agents(request: Request, db: Session = Depends(get_db)) -> dict:
+def agents(
+    request: Request,
+    db: Session = Depends(get_db),
+    q: str | None = None,
+    agent: str | None = None,
+    phase: str | None = None,
+    outcome: str | None = None,
+    scope: str | None = None,
+    monitor: str | None = None,
+    company: str | None = None,
+) -> dict:
     _require(request)
-    return read_model.agent_directory(db)
+    return read_model.agent_directory(
+        db, _filters(q, agent, phase, outcome, scope, monitor, company, funnel=False)
+    )
 
 
 @router.get("/review/queue")

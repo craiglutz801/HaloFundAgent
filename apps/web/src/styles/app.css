@@ -194,6 +194,23 @@ section.card > h2, .card > h2 { font-family: var(--serif); font-size: 1.45rem; f
 .row-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .page-head .row-actions { justify-content: flex-end; }
 .page-head .row-actions input[type="text"] { width: 240px; }
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.filter-bar input[type="text"],
+.filter-bar select {
+  width: auto;
+  min-width: 160px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  padding: 9px 12px;
+  background: #fff;
+}
+.filter-bar input[type="text"] { min-width: 240px; }
 .row-actions a:not(.button) {
   font-size: 13px;
   font-weight: 620;

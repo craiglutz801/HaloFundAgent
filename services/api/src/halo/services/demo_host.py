@@ -19,6 +19,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
 
+from halo.db import models as _models  # noqa: F401  # register tables before FORCE is lifted
 from halo.db.base import Base
 from halo.services.seed import seed
 from halo.settings import Settings

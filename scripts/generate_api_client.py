@@ -31,7 +31,7 @@ clear_settings_cache()
 RESPONSE_TYPES = {
     ("get", "/api/v1/me"): "Me",
     ("get", "/api/v1/overview"): "Overview",
-    ("get", "/api/v1/companies"): "{ items: CompanyCard[] }",
+    ("get", "/api/v1/companies"): "{ items: CompanyCard[]; counts?: { distinct_companies: number; processes: number }; applied_filters?: Record<string, unknown> }",
     ("get", "/api/v1/companies/{company_id}"): "CompanyDetail",
     ("get", "/api/v1/evidence/{evidence_id}"): "Evidence",
     ("get", "/api/v1/ic-packets/{packet_id}"): "Packet",

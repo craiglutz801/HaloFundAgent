@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from halo.calculations.capacity import estimated_capacity_hours
 from halo.db.models import (
+    AgentAssignment,
     AgentRun,
     Artifact,
     CloseRecord,
@@ -41,6 +42,7 @@ from halo.db.models import (
     WorkspaceMembership,
 )
 from halo.db.session import open_migration_session
+from halo.domain.lifecycle import assignment_status_for_run, from_case_status
 from halo.evidence.store import LocalObjectStore, clear_fixture_root
 from halo.models.schemas import Finding as FindingModel
 from halo.models.schemas import LensAssessment, XavierScorecard
@@ -220,6 +222,7 @@ class _Ctx:
         self.db = db
         self.store = store
         self.org_id = org_id
+        self._assignments: set[UUID] = set()
 
     def ws(self, slug: str) -> UUID:
         return fid("workspace", slug)
@@ -257,6 +260,11 @@ class _Ctx:
         owner: str,
         due_at: datetime | None,
     ) -> InvestmentCase:
+        phase, outcome, on_hold = from_case_status(status)
+        if status == "open":
+            company = self.db.get(Company, fid("company", slug))
+            if company is not None:
+                phase, outcome, on_hold = from_case_status(company.stage)
         row = InvestmentCase(
             id=fid("case", slug, case_key),
             organization_id=self.org_id,
@@ -267,6 +275,11 @@ class _Ctx:
             owner_id=fid("principal", owner),
             due_at=due_at,
             policy_version=POLICY,
+            phase=phase,
+            outcome=outcome,
+            on_hold=on_hold,
+            phase_entered_at=NOW,
+            outcome_at=NOW if outcome != "open" else None,
             row_version=1,
         )
         self.db.add(row)
@@ -389,11 +402,41 @@ class _Ctx:
         owner: str,
         detail: str = "",
     ) -> AgentRun:
+        assignment_id = fid("assignment", slug, case_key, agent)
+        if (
+            assignment_id not in self._assignments
+            and self.db.get(AgentAssignment, assignment_id) is None
+        ):
+            project_status = assignment_status_for_run(status)
+            self.db.add(
+                AgentAssignment(
+                    id=assignment_id,
+                    organization_id=self.org_id,
+                    workspace_id=self.ws(slug),
+                    company_id=fid("company", slug),
+                    agent_id=agent,
+                    investment_process_id=fid("case", slug, case_key),
+                    title=f"{agent.title()} project",
+                    objective=detail or "Specialist project for this process",
+                    status=project_status,
+                    owner_id=fid("principal", owner),
+                    created_by=fid("principal", owner),
+                    started_at=None if project_status == "queued" else NOW,
+                    completed_at=NOW if project_status == "completed" else None,
+                    last_activity_at=NOW,
+                    blocked_reason="A run failed. The project stays open for retry."
+                    if project_status == "blocked"
+                    else "",
+                    agent_config_version="v1",
+                )
+            )
+            self._assignments.add(assignment_id)
         row = AgentRun(
             id=fid("run", slug, case_key, agent, phase),
             organization_id=self.org_id,
             workspace_id=self.ws(slug),
             case_id=fid("case", slug, case_key),
+            assignment_id=assignment_id,
             agent_name=agent,
             phase=phase,
             snapshot_id=fid("snapshot", slug, case_key) if status != "queued" else None,
@@ -406,6 +449,7 @@ class _Ctx:
             model="fixture",
             config_hash="fixture",
             status_detail=detail,
+            heartbeat_at=NOW if status == "running" else None,
         )
         self.db.add(row)
         return row
@@ -524,7 +568,12 @@ class _Ctx:
             "case_id": str(fid("case", slug, case_key)),
             "policy_version": POLICY,
             "artifacts": [
-                {"id": str(item.id), "kind": item.kind, "sha256": item.sha256, "version": item.version}
+                {
+                    "id": str(item.id),
+                    "kind": item.kind,
+                    "sha256": item.sha256,
+                    "version": item.version,
+                }
                 for item in artifacts
                 if item is not None
             ],
@@ -552,14 +601,18 @@ class _Ctx:
         return row
 
 
-def _finding(statement: str, *, kind: str, evidence: list[str], slug: str, materiality: str = "material") -> dict:
+def _finding(
+    statement: str, *, kind: str, evidence: list[str], slug: str, materiality: str = "material"
+) -> dict:
     model = FindingModel(
         statement=statement,
         kind=kind,  # type: ignore[arg-type]
         materiality=materiality,  # type: ignore[arg-type]
         evidence_ids=[fid("evidence", slug, key) for key in evidence],
         confidence="medium" if evidence else "insufficient",
-        confidence_reason="Tied to the frozen fixture snapshot." if evidence else "Evidence is missing.",
+        confidence_reason="Tied to the frozen fixture snapshot."
+        if evidence
+        else "Evidence is missing.",
         limitations=["Fixture source. Not a live company."],
         validation_question=None if evidence else "What source would resolve this?",
     )
@@ -574,7 +627,9 @@ def _company_northline(ctx: _Ctx) -> None:
         stage="discovered",
         owner="jordan.hale",
     )
-    ctx.case("northline", "initial", case_type="initial", status="open", owner="jordan.hale", due_at=None)
+    ctx.case(
+        "northline", "initial", case_type="initial", status="open", owner="jordan.hale", due_at=None
+    )
     ctx.db.flush()
     ctx.event(
         "northline",
@@ -609,7 +664,14 @@ def _company_northline(ctx: _Ctx) -> None:
     )
     ctx.db.flush()
     ctx.snapshot("northline", "initial", ["profile"])
-    ctx.run("northline", "scout", case_key="initial", phase="sourcing", status="ready_for_review", owner="jordan.hale")
+    ctx.run(
+        "northline",
+        "scout",
+        case_key="initial",
+        phase="sourcing",
+        status="ready_for_review",
+        owner="jordan.hale",
+    )
     ctx.db.flush()
     ctx.artifact(
         "northline",
@@ -811,9 +873,27 @@ def _company_atlas(ctx: _Ctx) -> None:
         "xavier",
         case_key="initial",
         phase="independent",
-        status="ready_for_review",
+        status="reviewed",
         owner="priya.shah",
-        detail="EX and BX remain unscored.",
+        detail="EX and BX remain unscored. The first pass is finished.",
+    )
+    ctx.db.add(
+        AgentAssignment(
+            id=fid("assignment", "atlas", "initial", "mutombo", "references"),
+            organization_id=ctx.org_id,
+            workspace_id=ctx.ws("atlas"),
+            company_id=fid("company", "atlas"),
+            agent_id="mutombo",
+            investment_process_id=fid("case", "atlas", "initial"),
+            title="Reference challenge",
+            objective="Test founder-introduced references as its own project. This does not open comparison grants.",
+            status="active",
+            owner_id=fid("principal", "priya.shah"),
+            created_by=fid("principal", "priya.shah"),
+            started_at=NOW,
+            last_activity_at=NOW,
+            agent_config_version="v1",
+        )
     )
     ctx.run(
         "atlas",
@@ -1243,7 +1323,9 @@ def _company_vela(ctx: _Ctx) -> None:
             "summary": "Comparison agrees the concentration claim is company-reported and still material.",
             "findings": [],
             "missing_evidence": [],
-            "human_questions": ["IC should read the sealed bear case, which this review does not replace."],
+            "human_questions": [
+                "IC should read the sealed bear case, which this review does not replace."
+            ],
             "proposed_actions": [],
             "limitations": ["The independent artifact remains the bear case of record."],
             "claim_checks": [
@@ -1286,6 +1368,17 @@ def _company_vela(ctx: _Ctx) -> None:
         ("stockton", "Thesis does not book inventory."),
     ):
         ctx.review("vela", key, reviewer="priya.shah", notes=note)
+    ctx.document(
+        "vela",
+        "closing",
+        filename="vela-closing-record.txt",
+        mime="text/plain",
+        data=b"Fixture closing record for Vela Health Scheduling, Inc. It is verified and not yet used.",
+        source_kind="closing",
+        origin_class="human_reference",
+        usage_policy="closing",
+        ingestion_status="verified",
+    )
     ctx.db.flush()
     ctx.packet(
         "vela",
@@ -1303,7 +1396,9 @@ def _company_rally(ctx: _Ctx) -> None:
         stage="owned",
         owner="jordan.hale",
     )
-    ctx.case("rally", "initial", case_type="initial", status="owned", owner="jordan.hale", due_at=None)
+    ctx.case(
+        "rally", "initial", case_type="initial", status="owned", owner="jordan.hale", due_at=None
+    )
     ctx.case(
         "rally",
         "follow-on",
@@ -1403,9 +1498,25 @@ def _company_rally(ctx: _Ctx) -> None:
     ctx.db.flush()
     ctx.snapshot("rally", "initial", ["revenue"])
     ctx.snapshot("rally", "follow-on", ["meetings", "time-study"])
-    ctx.run("rally", "ainge", case_key="initial", phase="close", status="reviewed", owner="jordan.hale")
-    ctx.run("rally", "ainge", case_key="follow-on", phase="independent", status="ready_for_review", owner="jordan.hale")
-    ctx.run("rally", "mutombo", case_key="follow-on", phase="independent", status="ready_for_review", owner="jordan.hale")
+    ctx.run(
+        "rally", "ainge", case_key="initial", phase="close", status="reviewed", owner="jordan.hale"
+    )
+    ctx.run(
+        "rally",
+        "ainge",
+        case_key="follow-on",
+        phase="independent",
+        status="ready_for_review",
+        owner="jordan.hale",
+    )
+    ctx.run(
+        "rally",
+        "mutombo",
+        case_key="follow-on",
+        phase="independent",
+        status="ready_for_review",
+        owner="jordan.hale",
+    )
     ctx.db.flush()
     ctx.artifact(
         "rally",
@@ -1467,8 +1578,18 @@ def _company_rally(ctx: _Ctx) -> None:
         },
     )
     ctx.db.flush()
-    ctx.review("rally", "initial-memo", reviewer="jordan.hale", notes="Closing memo matches the verified record.")
-    ctx.review("rally", "follow-ainge", reviewer="priya.shah", notes="Follow-on memo leaves ownership in place.")
+    ctx.review(
+        "rally",
+        "initial-memo",
+        reviewer="jordan.hale",
+        notes="Closing memo matches the verified record.",
+    )
+    ctx.review(
+        "rally",
+        "follow-ainge",
+        reviewer="priya.shah",
+        notes="Follow-on memo leaves ownership in place.",
+    )
     ctx.review(
         "rally",
         "follow-mutombo",
@@ -1476,7 +1597,9 @@ def _company_rally(ctx: _Ctx) -> None:
         notes="Dissent correctly refuses to treat meetings as revenue.",
     )
     ctx.db.flush()
-    initial_packet = ctx.packet("rally", "initial", artifact_keys=["initial-memo"], status="decided")
+    initial_packet = ctx.packet(
+        "rally", "initial", artifact_keys=["initial-memo"], status="decided"
+    )
     ctx.packet(
         "rally",
         "follow-on",
@@ -1627,7 +1750,9 @@ def _company_court(ctx: _Ctx) -> None:
         stage="owned",
         owner="sam.okonkwo",
     )
-    ctx.case("court", "initial", case_type="initial", status="owned", owner="sam.okonkwo", due_at=None)
+    ctx.case(
+        "court", "initial", case_type="initial", status="owned", owner="sam.okonkwo", due_at=None
+    )
     ctx.db.flush()
     ctx.event(
         "court",
@@ -1673,7 +1798,9 @@ def _company_court(ctx: _Ctx) -> None:
     )
     ctx.db.flush()
     ctx.snapshot("court", "initial", ["prior"])
-    ctx.run("court", "ainge", case_key="initial", phase="close", status="reviewed", owner="jordan.hale")
+    ctx.run(
+        "court", "ainge", case_key="initial", phase="close", status="reviewed", owner="jordan.hale"
+    )
     ctx.db.flush()
     ctx.artifact(
         "court",

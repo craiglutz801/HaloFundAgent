@@ -1,9 +1,10 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useOverview } from "../api/queries";
 import { formatWhen } from "../api/types";
 
 export function ReviewQueue({ principalId }: { principalId: string }) {
-  const query = useOverview(principalId);
+  const [params] = useSearchParams();
+  const query = useOverview(principalId, params.toString());
   if (query.isLoading) return <div className="skeleton" />;
   const decisions = query.data?.decisions ?? [];
   return (

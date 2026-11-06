@@ -1,6 +1,7 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../api/client";
+import { getPortfolio } from "../api/generated";
+import { filterQuery } from "../api/queries";
 import { formatWhen } from "../api/types";
 import { MetricFreshness } from "../components/MetricFreshness";
 
@@ -10,9 +11,11 @@ type PortfolioView = {
 };
 
 export function Portfolio({ principalId }: { principalId: string }) {
+  const [params] = useSearchParams();
+  const search = params.toString();
   const query = useQuery({
-    queryKey: ["portfolio", principalId],
-    queryFn: () => api<PortfolioView>("/api/v1/portfolio"),
+    queryKey: ["portfolio", principalId, search],
+    queryFn: () => getPortfolio(filterQuery(search)) as Promise<PortfolioView>,
   });
   if (query.isLoading) return <div className="skeleton" />;
   return (
@@ -20,7 +23,7 @@ export function Portfolio({ principalId }: { principalId: string }) {
       <header className="page-head">
         <div>
           <h1>Portfolio</h1>
-          <p>Owned companies only. Unknown wins when required reporting is missing or stale.</p>
+          <p>Portfolio means a confirmed close. IC approval and a term sheet do not put a company here.</p>
         </div>
         <p className="meta">Synced {formatWhen(query.data?.synced_at)}</p>
       </header>

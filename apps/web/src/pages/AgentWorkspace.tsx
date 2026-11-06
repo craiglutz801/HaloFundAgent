@@ -1,5 +1,8 @@
-import { Link, useParams } from "react-router-dom";
-import { useCompany } from "../api/queries";
+import { useEffect } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { getAgents } from "../api/generated";
+import { filterQuery, useCompany } from "../api/queries";
 import { RunStatus } from "../components/RunStatus";
 
 const COPY: Record<string, { name: string; job: string }> = {
@@ -16,11 +19,34 @@ const COPY: Record<string, { name: string; job: string }> = {
 
 export function AgentWorkspace({ principalId }: { principalId: string }) {
   const params = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const agentId = params.agentId ?? "";
   const companyId = params.companyId;
-  const company = useCompany(principalId, companyId);
+  useEffect(() => {
+    if (!searchParams.get("scope")) {
+      const next = new URLSearchParams(searchParams);
+      next.set("scope", "active");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+  const company = useCompany(principalId, companyId, searchParams.toString());
+  const directory = useQuery({
+    queryKey: ["agent-projects", principalId, agentId, searchParams.toString()],
+    queryFn: () =>
+      getAgents(filterQuery(searchParams.toString())) as Promise<{
+        agents: {
+          id: string;
+          projects: { id: string; company_id: string; company_name: string; title: string; status: string; objective: string }[];
+        }[];
+      }>,
+    enabled: !companyId,
+  });
   const profile = COPY[agentId] ?? { name: agentId, job: "" };
-  const runs = company.data?.runs.filter((run) => run.agent_name === agentId) ?? [];
+  const runs = (company.data?.runs ?? []).filter((run) => run.agent_name === agentId);
+  const projects = directory.data?.agents.find((agent) => agent.id === agentId)?.projects ?? [];
+  const visibleProjects = companyId
+    ? (company.data?.assignments ?? []).filter((item) => item.agent_id === agentId)
+    : projects;
   const artifacts = company.data?.artifacts.filter((artifact) => runs.some((run) => run.id === artifact.run_id)) ?? [];
   return (
     <>
@@ -31,9 +57,26 @@ export function AgentWorkspace({ principalId }: { principalId: string }) {
           <p>{profile.job}</p>
         </div>
       </header>
-      {!companyId && <p className="empty">Open a company workstream to see this specialist’s output.</p>}
+      {!companyId && projects.length === 0 && !directory.isLoading && (
+        <p className="empty">No projects match this filter.</p>
+      )}
+      {visibleProjects.map((project) => (
+        <article className="card" key={project.id}>
+          <p className="kicker">{"company_name" in project ? project.company_name : company.data?.company.display_name}</p>
+          <h2>{project.title}</h2>
+          <p>{"objective" in project ? project.objective : ""}</p>
+          <p className="meta">{project.status.replaceAll("_", " ")}</p>
+          <Link
+            to={`/companies/${"company_id" in project ? project.company_id : companyId}/agents/${agentId}?${searchParams}`}
+          >
+            Open project
+          </Link>
+        </article>
+      ))}
       {company.isLoading && <div className="skeleton" />}
-      {runs.length === 0 && companyId && !company.isLoading && <p className="empty">Not yet run for this company.</p>}
+      {runs.length === 0 && companyId && !company.isLoading && visibleProjects.length === 0 && (
+        <p className="empty">No project for this specialist matches the filter.</p>
+      )}
       {runs.map((run) => (
         <article className="card" key={run.id}>
           <h2>

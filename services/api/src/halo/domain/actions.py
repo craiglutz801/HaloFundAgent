@@ -14,10 +14,12 @@ from halo.db.models import (
     AgentRun,
     Artifact,
     AuditEvent,
+    CloseRecord,
     Company,
     Concern,
     ConcernDisposition,
     Decision,
+    Document,
     EvidenceRecord,
     IcPacket,
     IdempotencyKey,
@@ -123,7 +125,11 @@ def record_review(
     if verdict not in {"approve_draft", "request_changes", "reject_unsupported"}:
         raise HaloError(422, "INVALID_VERDICT", "Review verdict is not recognized.")
     if len(notes.strip()) < 8:
-        raise HaloError(422, "NOTES_REQUIRED", "A review needs a note. It does not clear concerns or approve an investment.")
+        raise HaloError(
+            422,
+            "NOTES_REQUIRED",
+            "A review needs a note. It does not clear concerns or approve an investment.",
+        )
     artifact = db.get(Artifact, artifact_id)
     if artifact is None:
         raise HaloError(404, "NOT_FOUND", "Not found.")
@@ -191,7 +197,9 @@ def dispose_concern(
     if concern.status != "open":
         raise HaloError(409, "ALREADY_DISPOSED", "This concern already has a disposition.")
     if disposition not in {"resolved", "accepted", "waived"}:
-        raise HaloError(422, "INVALID_DISPOSITION", "Disposition must be resolved, accepted, or waived.")
+        raise HaloError(
+            422, "INVALID_DISPOSITION", "Disposition must be resolved, accepted, or waived."
+        )
     if disposition == "waived":
         raise HaloError(
             409,
@@ -210,7 +218,9 @@ def dispose_concern(
     for evidence_id in evidence_ids:
         evidence = db.get(EvidenceRecord, evidence_id)
         if evidence is None or evidence.workspace_id != concern.workspace_id:
-            raise HaloError(422, "EVIDENCE_REQUIRED", "Evidence is not available in this workspace.")
+            raise HaloError(
+                422, "EVIDENCE_REQUIRED", "Evidence is not available in this workspace."
+            )
     row = ConcernDisposition(
         organization_id=concern.organization_id,
         workspace_id=concern.workspace_id,
@@ -255,7 +265,14 @@ def stage_action(
     expected_case_version: int,
     request_id: str,
 ) -> dict[str, Any]:
-    if action not in {"submit_ic", "accept_first_look", "pass", "pause"}:
+    if action not in {
+        "submit_ic",
+        "accept_first_look",
+        "advance_closing",
+        "confirm_close",
+        "pass",
+        "pause",
+    }:
         raise HaloError(422, "UNKNOWN_ACTION", "Stage action is not recognized.")
     case, company = _visible_case(db, case_id)
     if action == "submit_ic" and not has_capability(
@@ -265,7 +282,13 @@ def stage_action(
     if action == "accept_first_look" and not has_capability(
         db, case.organization_id, case.workspace_id, "ic.decide"
     ):
-        raise HaloError(403, "FORBIDDEN", "Accepting a first look requires explicit investment authority.")
+        raise HaloError(
+            403, "FORBIDDEN", "Accepting a first look requires explicit investment authority."
+        )
+    if action in {"advance_closing", "confirm_close"} and not has_capability(
+        db, case.organization_id, case.workspace_id, "ic.decide"
+    ):
+        raise HaloError(403, "FORBIDDEN", "Closing authority is required.")
     if action in {"pass", "pause"} and not (
         has_capability(db, case.organization_id, case.workspace_id, "ic.decide")
         or has_capability(db, case.organization_id, case.workspace_id, "case.submit_ic")
@@ -277,8 +300,10 @@ def stage_action(
     if len(rationale.strip()) < 8:
         raise HaloError(422, "RATIONALE_REQUIRED", "A rationale is required.")
     if action == "submit_ic":
-        if company.stage != "diligence":
-            raise HaloError(409, "GATE_NOT_MET", "Only a company in diligence can be submitted to IC.")
+        if case.phase != "due_diligence":
+            raise HaloError(
+                409, "GATE_NOT_MET", "Only a process in due diligence can be submitted to IC."
+            )
         missing = ic_gaps(db, case)
         if missing:
             raise HaloError(
@@ -289,11 +314,64 @@ def stage_action(
             )
         _move(db, actor, company, case, "ic_review", rationale.strip(), "stage_action", None)
         case.status = "ic_review"
+        case.phase = "investment_committee"
     elif action == "accept_first_look":
-        if company.stage != "discovered":
-            raise HaloError(409, "GATE_NOT_MET", "Only a discovered company can be accepted into first look.")
+        if case.phase != "sourcing":
+            raise HaloError(
+                409, "GATE_NOT_MET", "Only a sourcing process can be accepted into screening."
+            )
         _move(db, actor, company, case, "first_look", rationale.strip(), "stage_action", None)
         case.status = "first_look"
+        case.phase = "screening"
+    elif action == "advance_closing":
+        if case.phase != "term_sheet":
+            raise HaloError(409, "GATE_NOT_MET", "Closing opens from the term sheet phase.")
+        if company.stage == "owned":
+            case.status = "closing"
+            case.phase = "negotiation_closing"
+            case.phase_entered_at = datetime.now(timezone.utc)
+        else:
+            _move(db, actor, company, case, "closing", rationale.strip(), "stage_action", None)
+            case.status = "closing"
+    elif action == "confirm_close":
+        if case.phase != "negotiation_closing":
+            raise HaloError(
+                409,
+                "GATE_NOT_MET",
+                "Portfolio starts only after an authorized close from negotiation and closing.",
+            )
+        document = db.scalar(
+            select(Document).where(
+                Document.workspace_id == case.workspace_id,
+                Document.source_kind == "closing",
+                Document.ingestion_status == "verified",
+            )
+        )
+        if document is None:
+            raise HaloError(
+                409,
+                "GATE_NOT_MET",
+                "Close confirmation needs a verified closing document on this company.",
+            )
+        now = datetime.now(timezone.utc)
+        db.add(
+            CloseRecord(
+                organization_id=case.organization_id,
+                workspace_id=case.workspace_id,
+                case_id=case.id,
+                document_id=document.id,
+                effective_at=now,
+                actor_id=actor.id,
+                verified_at=now,
+            )
+        )
+        if company.stage != "owned":
+            _move(db, actor, company, case, "owned", rationale.strip(), "stage_action", None)
+        else:
+            case.outcome = "portfolio"
+            case.outcome_at = now
+            case.on_hold = False
+        case.status = "owned"
     elif action in {"pass", "pause"}:
         target = "passed" if action == "pass" else "paused"
         if company.stage == "owned" and case.case_type != "initial":
@@ -325,14 +403,18 @@ def record_decision(
     request_id: str,
 ) -> dict[str, Any]:
     if decision not in {"approve", "pass", "defer", "terms_revision"}:
-        raise HaloError(422, "INVALID_DECISION", "Decision must be approve, pass, defer, or terms_revision.")
+        raise HaloError(
+            422, "INVALID_DECISION", "Decision must be approve, pass, defer, or terms_revision."
+        )
     if len(rationale.strip()) < 8:
         raise HaloError(422, "RATIONALE_REQUIRED", "A rationale is required.")
     packet = db.get(IcPacket, packet_id)
     if packet is None:
         raise HaloError(404, "NOT_FOUND", "Not found.")
     if not has_capability(db, packet.organization_id, packet.workspace_id, "ic.decide"):
-        raise HaloError(403, "FORBIDDEN", "Investment committee authority is not on your membership.")
+        raise HaloError(
+            403, "FORBIDDEN", "Investment committee authority is not on your membership."
+        )
     packet = db.scalar(select(IcPacket).where(IcPacket.id == packet_id).with_for_update())
     if packet is None:
         raise HaloError(404, "NOT_FOUND", "Not found.")
@@ -376,14 +458,19 @@ def record_decision(
     db.add(row)
     db.flush()
     if decision == "approve" and case.case_type == "initial":
-        if company.stage != "ic_review":
-            raise HaloError(409, "GATE_NOT_MET", "Approval of an initial case requires IC review.")
-        _move(db, actor, company, case, "closing", rationale.strip(), "decision", row.id)
-        case.status = "closing"
+        if case.phase != "investment_committee":
+            raise HaloError(
+                409, "GATE_NOT_MET", "Approval of an initial case requires Investment Committee."
+            )
+        _move(db, actor, company, case, "term_sheet", rationale.strip(), "decision", row.id)
+        case.status = "term_sheet"
+        case.phase = "term_sheet"
     elif decision == "approve" and case.case_type == "follow_on":
         if company.stage != "owned":
             raise HaloError(409, "GATE_NOT_MET", "A follow-on approval does not create ownership.")
         case.status = "closing"
+        case.phase = "term_sheet"
+        case.phase_entered_at = datetime.now(timezone.utc)
     elif decision == "pass" and case.case_type == "initial" and company.stage != "owned":
         _move(db, actor, company, case, "passed", rationale.strip(), "decision", row.id)
         case.status = "passed"
@@ -403,7 +490,11 @@ def record_decision(
         action="ICDecisionRecorded",
         object_id=row.id,
         request_id=request_id,
-        payload={"decision": decision, "packet_id": str(packet.id), "packet_sha256": packet.manifest_sha256},
+        payload={
+            "decision": decision,
+            "packet_id": str(packet.id),
+            "packet_sha256": packet.manifest_sha256,
+        },
     )
     db.add(
         OutboxEvent(
@@ -444,7 +535,9 @@ def ic_gaps(db: Session, case: InvestmentCase) -> list[dict[str, str]]:
             missing.append({"kind": "artifact", "label": label})
             continue
         if kind == "independent_risk_report" and artifact.sealed_at is None:
-            missing.append({"kind": "independent_pass", "label": "Mutombo independent pass is not sealed"})
+            missing.append(
+                {"kind": "independent_pass", "label": "Mutombo independent pass is not sealed"}
+            )
     packet = db.scalar(
         select(IcPacket).where(IcPacket.case_id == case.id, IcPacket.status == "frozen")
     )
@@ -520,7 +613,41 @@ def _move(
     set_stage_transition(db, str(event.id))
     company.stage = to_stage
     company.row_version += 1
+    _sync_process(case, to_stage)
     db.flush()
+
+
+def _sync_process(case: InvestmentCase, to_stage: str) -> None:
+    """Keep the process phase and outcome aligned with an authorized stage event."""
+    now = datetime.now(timezone.utc)
+    if to_stage == "owned":
+        case.outcome = "portfolio"
+        case.outcome_at = now
+        case.on_hold = False
+        if case.phase == "unknown":
+            case.phase = "negotiation_closing"
+    elif to_stage == "passed":
+        case.outcome = "passed"
+        case.outcome_at = now
+        case.on_hold = False
+    elif to_stage == "paused":
+        case.on_hold = True
+    else:
+        phase = {
+            "discovered": "sourcing",
+            "first_look": "screening",
+            "diligence": "due_diligence",
+            "ic_review": "investment_committee",
+            "term_sheet": "term_sheet",
+            "closing": "negotiation_closing",
+            "partner_review": "partner_review",
+        }.get(to_stage)
+        if phase is not None:
+            case.phase = phase
+            case.phase_entered_at = now
+            if case.outcome == "passed":
+                case.outcome = "open"
+            case.on_hold = False
 
 
 def _audit(

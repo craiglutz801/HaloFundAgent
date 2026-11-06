@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../api/client";
 import { postStageAction } from "../api/generated";
@@ -14,7 +14,9 @@ import { WorkstreamTrack } from "../components/WorkstreamTrack";
 
 export function CompanyWorkspace({ principalId, me }: { principalId: string; me: Me }) {
   const { companyId = "" } = useParams();
-  const query = useCompany(principalId, companyId);
+  const [params, setParams] = useSearchParams();
+  const query = useCompany(principalId, companyId, params.toString());
+  const companyFilter = params.get("company");
   const client = useQueryClient();
   const [evidence, setEvidence] = useState<Evidence | null>(null);
   const [reviewId, setReviewId] = useState<string | null>(null);
@@ -22,31 +24,56 @@ export function CompanyWorkspace({ principalId, me }: { principalId: string; me:
   const [gaps, setGaps] = useState<{ kind: string; label: string }[]>([]);
   if (query.isLoading) return <div className="skeleton" />;
   if (query.isError) return <p className="empty">This company is not in your workspaces.</p>;
+  if (companyFilter && companyFilter !== companyId) {
+    return (
+      <p className="empty">
+        This company is outside the company filter.
+        <button
+          className="button secondary"
+          type="button"
+          onClick={() => {
+            const next = new URLSearchParams(params);
+            next.delete("company");
+            setParams(next);
+          }}
+        >
+          Clear the company filter
+        </button>
+      </p>
+    );
+  }
   if (!query.data) return null;
   const data = query.data;
-  const initial = data.cases.find((item) => item.case_type === "initial") ?? data.cases[0];
+  const primary = data.cases.find((item) => item.primary) ?? data.cases.find((item) => item.case_type === "initial") ?? data.cases[0];
+  const openProcess = data.cases.find((item) => item.outcome === "open") ?? primary;
+  const otherOpen =
+    primary && openProcess && openProcess.id !== primary.id
+      ? `Open ${openProcess.case_type.replaceAll("_", " ")} in ${openProcess.phase_label ?? openProcess.phase}`
+      : undefined;
   const reviewArtifact = data.artifacts.find((item) => item.id === reviewId);
   return (
     <>
       <CompanyHeader
         name={data.company.display_name}
         legalName={data.company.legal_name}
-        stage={data.company.stage}
+        phase={primary?.phase ?? "unknown"}
+        outcome={primary?.outcome ?? "open"}
         owner={data.company.owner_name}
+        otherOpen={otherOpen}
       />
-      <StageTimeline stage={data.company.stage} />
+      <StageTimeline phase={primary?.phase ?? ""} />
       <div className="row-actions">
-        {data.company.stage === "diligence" && hasCapability(me, "case.submit_ic") && initial && (
+        {openProcess?.phase === "due_diligence" && hasCapability(me, "case.submit_ic") && (
           <button
             className="button"
             type="button"
             onClick={async () => {
               setError("");
               try {
-                await postStageAction(initial.id, {
+                await postStageAction(openProcess.id, {
                   action: "submit_ic",
                   rationale: "Submit the current diligence case to investment committee.",
-                  expected_case_version: initial.row_version,
+                  expected_case_version: openProcess.row_version,
                 });
                 await client.invalidateQueries();
               } catch (caught) {
@@ -61,20 +88,52 @@ export function CompanyWorkspace({ principalId, me }: { principalId: string; me:
             Submit to IC
           </button>
         )}
-        {data.company.stage === "discovered" && hasCapability(me, "ic.decide") && initial && (
+        {openProcess?.phase === "sourcing" && hasCapability(me, "ic.decide") && (
           <button
             className="button secondary"
             type="button"
             onClick={async () => {
-              await postStageAction(initial.id, {
+              await postStageAction(openProcess.id, {
                 action: "accept_first_look",
                 rationale: "Partner accepts a first look on the sourced profile.",
-                expected_case_version: initial.row_version,
+                expected_case_version: openProcess.row_version,
               });
               await client.invalidateQueries();
             }}
           >
-            Accept first look
+            Accept into screening
+          </button>
+        )}
+        {openProcess?.phase === "term_sheet" && hasCapability(me, "ic.decide") && (
+          <button
+            className="button secondary"
+            type="button"
+            onClick={async () => {
+              await postStageAction(openProcess.id, {
+                action: "advance_closing",
+                rationale: "Open negotiation and closing from the approved term sheet.",
+                expected_case_version: openProcess.row_version,
+              });
+              await client.invalidateQueries();
+            }}
+          >
+            Open closing
+          </button>
+        )}
+        {openProcess?.phase === "negotiation_closing" && hasCapability(me, "ic.decide") && (
+          <button
+            className="button"
+            type="button"
+            onClick={async () => {
+              await postStageAction(openProcess.id, {
+                action: "confirm_close",
+                rationale: "Confirm the close. This is the step that creates the portfolio record.",
+                expected_case_version: openProcess.row_version,
+              });
+              await client.invalidateQueries();
+            }}
+          >
+            Confirm close
           </button>
         )}
       </div>
@@ -88,6 +147,33 @@ export function CompanyWorkspace({ principalId, me }: { principalId: string; me:
           ))}
         </ul>
       )}
+      {data.filter_restricted && (data.assignments ?? []).length === 0 && (
+        <p className="empty">No projects on this company match the current filter.</p>
+      )}
+      <section>
+        <h2>Projects</h2>
+        <div className="stack">
+          {(data.assignments ?? []).length === 0 && !data.filter_restricted && (
+            <p className="empty">No agent projects on this company yet.</p>
+          )}
+          {(data.assignments ?? []).map((assignment) => (
+            <article className="card" key={assignment.id}>
+              <p className="kicker">{assignment.agent_name}</p>
+              <h3>{assignment.title}</h3>
+              <p>{assignment.objective}</p>
+              <p className="meta">
+                {assignment.status.replaceAll("_", " ")}
+                {assignment.working_now ? " · working now" : ""}
+                {assignment.working_state === "unknown" ? " · working state unknown" : ""}
+                {assignment.phase_label ? ` · ${assignment.phase_label}` : ""}
+              </p>
+              <Link to={`/companies/${data.company.id}/agents/${assignment.agent_id}${params.toString() ? `?${params}` : ""}`}>
+                Open {assignment.agent_name}
+              </Link>
+            </article>
+          ))}
+        </div>
+      </section>
       <div className="grid two">
         <section>
           <h2>Workstreams</h2>
