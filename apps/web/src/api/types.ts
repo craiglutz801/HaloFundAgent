@@ -183,6 +183,16 @@ export const PHASES = [
   "negotiation_closing",
 ] as const;
 
+export const PHASE_SHORT: Record<string, string> = {
+  sourcing: "Source",
+  screening: "Screen",
+  partner_review: "Partner",
+  due_diligence: "Diligence",
+  investment_committee: "Committee",
+  term_sheet: "Terms",
+  negotiation_closing: "Close",
+};
+
 export const PHASE_LABELS: Record<string, string> = {
   sourcing: "Sourcing",
   screening: "Screening",

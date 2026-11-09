@@ -8,6 +8,7 @@ import type { Evidence, Me } from "../api/types";
 import { hasCapability } from "../api/types";
 import { CompanyHeader } from "../components/CompanyHeader";
 import { EvidenceDrawer } from "../components/EvidenceDrawer";
+import { FilterBar } from "../components/FilterBar";
 import { ReviewDialog } from "../components/ReviewDialog";
 import { StageTimeline } from "../components/StageTimeline";
 import { WorkstreamTrack } from "../components/WorkstreamTrack";
@@ -51,6 +52,7 @@ export function CompanyWorkspace({ principalId, me }: { principalId: string; me:
       ? `Open ${openProcess.case_type.replaceAll("_", " ")} in ${openProcess.phase_label ?? openProcess.phase}`
       : undefined;
   const reviewArtifact = data.artifacts.find((item) => item.id === reviewId);
+  const search = params.toString();
   return (
     <>
       <CompanyHeader
@@ -60,83 +62,10 @@ export function CompanyWorkspace({ principalId, me }: { principalId: string; me:
         outcome={primary?.outcome ?? "open"}
         owner={data.company.owner_name}
         otherOpen={otherOpen}
+        actions={<StageActions me={me} openProcess={openProcess} onError={setError} onGaps={setGaps} />}
       />
       <StageTimeline phase={primary?.phase ?? ""} />
-      <div className="row-actions">
-        {openProcess?.phase === "due_diligence" && hasCapability(me, "case.submit_ic") && (
-          <button
-            className="button"
-            type="button"
-            onClick={async () => {
-              setError("");
-              try {
-                await postStageAction(openProcess.id, {
-                  action: "submit_ic",
-                  rationale: "Submit the current diligence case to investment committee.",
-                  expected_case_version: openProcess.row_version,
-                });
-                await client.invalidateQueries();
-              } catch (caught) {
-                if (caught instanceof ApiError) {
-                  setError(caught.message);
-                  const missing = caught.details.missing_requirements;
-                  setGaps(Array.isArray(missing) ? (missing as { kind: string; label: string }[]) : []);
-                }
-              }
-            }}
-          >
-            Submit to IC
-          </button>
-        )}
-        {openProcess?.phase === "sourcing" && hasCapability(me, "ic.decide") && (
-          <button
-            className="button secondary"
-            type="button"
-            onClick={async () => {
-              await postStageAction(openProcess.id, {
-                action: "accept_first_look",
-                rationale: "Partner accepts a first look on the sourced profile.",
-                expected_case_version: openProcess.row_version,
-              });
-              await client.invalidateQueries();
-            }}
-          >
-            Accept into screening
-          </button>
-        )}
-        {openProcess?.phase === "term_sheet" && hasCapability(me, "ic.decide") && (
-          <button
-            className="button secondary"
-            type="button"
-            onClick={async () => {
-              await postStageAction(openProcess.id, {
-                action: "advance_closing",
-                rationale: "Open negotiation and closing from the approved term sheet.",
-                expected_case_version: openProcess.row_version,
-              });
-              await client.invalidateQueries();
-            }}
-          >
-            Open closing
-          </button>
-        )}
-        {openProcess?.phase === "negotiation_closing" && hasCapability(me, "ic.decide") && (
-          <button
-            className="button"
-            type="button"
-            onClick={async () => {
-              await postStageAction(openProcess.id, {
-                action: "confirm_close",
-                rationale: "Confirm the close. This is the step that creates the portfolio record.",
-                expected_case_version: openProcess.row_version,
-              });
-              await client.invalidateQueries();
-            }}
-          >
-            Confirm close
-          </button>
-        )}
-      </div>
+      <FilterBar />
       {error && <p className="error">{error}</p>}
       {gaps.length > 0 && (
         <ul>
@@ -150,96 +79,107 @@ export function CompanyWorkspace({ principalId, me }: { principalId: string; me:
       {data.filter_restricted && (data.assignments ?? []).length === 0 && (
         <p className="empty">No projects on this company match the current filter.</p>
       )}
-      <section>
-        <h2>Projects</h2>
-        <div className="stack">
-          {(data.assignments ?? []).length === 0 && !data.filter_restricted && (
-            <p className="empty">No agent projects on this company yet.</p>
-          )}
-          {(data.assignments ?? []).map((assignment) => (
-            <article className="card" key={assignment.id}>
-              <p className="kicker">{assignment.agent_name}</p>
-              <h3>{assignment.title}</h3>
-              <p>{assignment.objective}</p>
-              <p className="meta">
-                {assignment.status.replaceAll("_", " ")}
-                {assignment.working_now ? " · working now" : ""}
-                {assignment.working_state === "unknown" ? " · working state unknown" : ""}
-                {assignment.phase_label ? ` · ${assignment.phase_label}` : ""}
-              </p>
-              <Link to={`/companies/${data.company.id}/agents/${assignment.agent_id}${params.toString() ? `?${params}` : ""}`}>
-                Open {assignment.agent_name}
-              </Link>
-            </article>
-          ))}
-        </div>
-      </section>
-      <div className="grid two">
-        <section>
-          <h2>Workstreams</h2>
-          <div className="tracks">
-            {data.runs.length === 0 && <p className="empty">No specialist run yet.</p>}
-            {data.runs.map((run) => (
-              <WorkstreamTrack
-                key={run.id}
-                companyId={data.company.id}
-                agent={run.agent_name}
-                phase={run.phase}
-                status={run.status}
-                detail={run.status_detail}
-              />
-            ))}
-          </div>
-        </section>
-        <section>
-          <h2>Concerns</h2>
-          {data.concerns.length === 0 && <p className="empty">No concerns on this company.</p>}
-          {data.concerns.map((concern) => (
-            <article className="card" key={concern.id}>
-              <span className={concern.blocking ? "badge blocking" : "badge"}>{concern.status}</span>
-              <h3>{concern.question}</h3>
-              <p className="meta">Owner {concern.owner_name}</p>
-            </article>
-          ))}
-        </section>
-      </div>
-      <section style={{ marginTop: 16 }}>
-        <h2>Evidence</h2>
-        <div className="stack">
-          {data.evidence.map((item) => (
-            <button className="card" key={item.id} type="button" onClick={() => setEvidence(item)} style={{ textAlign: "left" }}>
-              <strong>{item.document?.filename}</strong>
-              <div className="meta">{item.kind}</div>
-            </button>
-          ))}
-        </div>
-      </section>
-      <section style={{ marginTop: 16 }}>
-        <h2>Drafts</h2>
-        {data.artifacts.map((artifact) => (
-          <article className="card" key={artifact.id}>
-            <h3>{artifact.kind}</h3>
-            <p className="hash">{artifact.sha256}</p>
-            <div className="row-actions">
-              {hasCapability(me, "artifact.review") && (
-                <button className="button secondary" type="button" onClick={() => setReviewId(artifact.id)}>
-                  Review draft
-                </button>
+      <div className="deal">
+        <div className="deal-main">
+          <section className="card">
+            <h2 className="panel-title">Projects</h2>
+            <div className="roster">
+              {(data.assignments ?? []).length === 0 && !data.filter_restricted && (
+                <p className="empty">No agent projects on this company yet.</p>
               )}
-              <Link to={`/companies/${data.company.id}/agents/${artifact.kind.startsWith("mutombo") || artifact.kind === "independent_risk_report" ? "mutombo" : artifact.kind.split("_")[0]}`}>
-                Open specialist
-              </Link>
+              {(data.assignments ?? []).map((assignment) => (
+                <div className="roster-row" key={assignment.id}>
+                  <div>
+                    <p className="kicker">{assignment.agent_name}</p>
+                    <strong>{assignment.title}</strong>
+                    <p className="muted">{assignment.objective}</p>
+                  </div>
+                  <div className="roster-side">
+                    <span className="meta">
+                      {assignment.status.replaceAll("_", " ")}
+                      {assignment.working_now ? " · working now" : ""}
+                      {assignment.working_state === "unknown" ? " · working state unknown" : ""}
+                    </span>
+                    <Link to={`/companies/${data.company.id}/agents/${assignment.agent_id}${search ? `?${search}` : ""}`}>
+                      Open
+                    </Link>
+                  </div>
+                </div>
+              ))}
             </div>
-          </article>
-        ))}
-      </section>
-      {data.packets.filter((packet) => packet.status === "frozen").map((packet) => (
-        <p key={packet.id}>
-          <Link className="button" to={`/review/packets/${packet.id}`}>
-            Open frozen packet
-          </Link>
-        </p>
-      ))}
+          </section>
+          {data.runs.length > 0 && (
+            <section>
+              <h2>Runs</h2>
+              <div className="tracks">
+                {data.runs.map((run) => (
+                  <WorkstreamTrack
+                    key={run.id}
+                    companyId={data.company.id}
+                    agent={run.agent_name}
+                    phase={run.phase}
+                    status={run.status}
+                    detail={run.status_detail}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+        <aside className="deal-side">
+          <section className="card">
+            <h2 className="panel-title">Concerns</h2>
+            {data.concerns.length === 0 && <p className="empty">No concerns on this company.</p>}
+            {data.concerns.map((concern) => (
+              <div className="decision" key={concern.id}>
+                <div>
+                  <span className={concern.blocking ? "badge blocking" : "badge"}>{concern.status}</span>
+                  <div className="muted">{concern.question}</div>
+                  <div className="meta">Owner {concern.owner_name}</div>
+                </div>
+              </div>
+            ))}
+          </section>
+          <section className="card">
+            <h2 className="panel-title">Evidence</h2>
+            {data.evidence.length === 0 && <p className="empty">No evidence on file.</p>}
+            <div className="roster">
+              {data.evidence.map((item) => (
+                <button className="roster-row" key={item.id} type="button" onClick={() => setEvidence(item)}>
+                  <div>
+                    <strong>{item.document?.filename}</strong>
+                    <div className="meta">{item.kind}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+          <section className="card">
+            <h2 className="panel-title">Drafts</h2>
+            {data.artifacts.length === 0 && <p className="empty">No drafts yet.</p>}
+            {data.artifacts.map((artifact) => (
+              <div className="decision" key={artifact.id}>
+                <div>
+                  <strong>{artifact.kind.replaceAll("_", " ")}</strong>
+                  <p className="hash">{artifact.sha256}</p>
+                </div>
+                {hasCapability(me, "artifact.review") && (
+                  <button className="button secondary" type="button" onClick={() => setReviewId(artifact.id)}>
+                    Review
+                  </button>
+                )}
+              </div>
+            ))}
+          </section>
+          {data.packets
+            .filter((packet) => packet.status === "frozen")
+            .map((packet) => (
+              <Link key={packet.id} className="button" to={`/review/packets/${packet.id}`}>
+                Open frozen packet
+              </Link>
+            ))}
+        </aside>
+      </div>
       {evidence && <EvidenceDrawer evidence={evidence} onClose={() => setEvidence(null)} />}
       {reviewArtifact && (
         <ReviewDialog
@@ -252,5 +192,63 @@ export function CompanyWorkspace({ principalId, me }: { principalId: string; me:
         />
       )}
     </>
+  );
+}
+
+function StageActions({
+  me,
+  openProcess,
+  onError,
+  onGaps,
+}: {
+  me: Me;
+  openProcess: { id: string; phase?: string; row_version: number } | undefined;
+  onError: (message: string) => void;
+  onGaps: (gaps: { kind: string; label: string }[]) => void;
+}) {
+  const client = useQueryClient();
+  if (!openProcess) return null;
+  async function act(action: string, rationale: string) {
+    if (!openProcess) return;
+    onError("");
+    onGaps([]);
+    try {
+      await postStageAction(openProcess.id, {
+        action,
+        rationale,
+        expected_case_version: openProcess.row_version,
+      });
+      await client.invalidateQueries();
+    } catch (caught) {
+      if (caught instanceof ApiError) {
+        onError(caught.message);
+        const missing = caught.details.missing_requirements;
+        onGaps(Array.isArray(missing) ? (missing as { kind: string; label: string }[]) : []);
+      }
+    }
+  }
+  return (
+    <div className="row-actions">
+      {openProcess.phase === "due_diligence" && hasCapability(me, "case.submit_ic") && (
+        <button className="button" type="button" onClick={() => void act("submit_ic", "Submit the current diligence case to investment committee.")}>
+          Submit to IC
+        </button>
+      )}
+      {openProcess.phase === "sourcing" && hasCapability(me, "ic.decide") && (
+        <button className="button secondary" type="button" onClick={() => void act("accept_first_look", "Partner accepts a first look on the sourced profile.")}>
+          Accept into screening
+        </button>
+      )}
+      {openProcess.phase === "term_sheet" && hasCapability(me, "ic.decide") && (
+        <button className="button secondary" type="button" onClick={() => void act("advance_closing", "Open negotiation and closing from the approved term sheet.")}>
+          Open closing
+        </button>
+      )}
+      {openProcess.phase === "negotiation_closing" && hasCapability(me, "ic.decide") && (
+        <button className="button" type="button" onClick={() => void act("confirm_close", "Confirm the close. This is the step that creates the portfolio record.")}>
+          Confirm close
+        </button>
+      )}
+    </div>
   );
 }

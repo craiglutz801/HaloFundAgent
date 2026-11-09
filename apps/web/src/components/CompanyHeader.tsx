@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { phaseLabel } from "../api/types";
 
 export function CompanyHeader({
@@ -7,6 +8,7 @@ export function CompanyHeader({
   outcome,
   owner,
   otherOpen,
+  actions,
 }: {
   name: string;
   legalName: string;
@@ -14,6 +16,7 @@ export function CompanyHeader({
   outcome: string;
   owner: string;
   otherOpen?: string;
+  actions?: ReactNode;
 }) {
   const label = outcome === "portfolio" ? "Portfolio" : outcome === "passed" ? "Passed" : phaseLabel(phase);
   return (
@@ -21,10 +24,15 @@ export function CompanyHeader({
       <div>
         <p className="kicker">{legalName}</p>
         <h1>{name}</h1>
-        <p>Owner {owner}</p>
-        {otherOpen && <p className="meta">{otherOpen}</p>}
+        <p>
+          Owner {owner}
+          {otherOpen ? ` · ${otherOpen}` : ""}
+        </p>
       </div>
-      <span className="badge">{label}</span>
+      <div className="page-head-side">
+        <span className="badge">{label}</span>
+        {actions}
+      </div>
     </header>
   );
 }

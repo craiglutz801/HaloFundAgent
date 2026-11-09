@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getAgents } from "../api/generated";
 import { filterQuery, useCompany } from "../api/queries";
+import { FilterBar } from "../components/FilterBar";
 import { RunStatus } from "../components/RunStatus";
 
 const COPY: Record<string, { name: string; job: string }> = {
@@ -57,22 +58,32 @@ export function AgentWorkspace({ principalId }: { principalId: string }) {
           <p>{profile.job}</p>
         </div>
       </header>
+      <FilterBar />
       {!companyId && projects.length === 0 && !directory.isLoading && (
         <p className="empty">No projects match this filter.</p>
       )}
-      {visibleProjects.map((project) => (
-        <article className="card" key={project.id}>
-          <p className="kicker">{"company_name" in project ? project.company_name : company.data?.company.display_name}</p>
-          <h2>{project.title}</h2>
-          <p>{"objective" in project ? project.objective : ""}</p>
-          <p className="meta">{project.status.replaceAll("_", " ")}</p>
-          <Link
-            to={`/companies/${"company_id" in project ? project.company_id : companyId}/agents/${agentId}?${searchParams}`}
-          >
-            Open project
-          </Link>
-        </article>
-      ))}
+      {visibleProjects.length > 0 && (
+        <section className="card">
+          <h2 className="panel-title">Projects</h2>
+          <div className="roster">
+            {visibleProjects.map((project) => (
+              <div className="roster-row" key={project.id}>
+                <div>
+                  <p className="kicker">{"company_name" in project ? project.company_name : company.data?.company.display_name}</p>
+                  <strong>{project.title}</strong>
+                  {"objective" in project && project.objective ? <p className="muted">{project.objective}</p> : null}
+                </div>
+                <div className="roster-side">
+                  <span className="meta">{project.status.replaceAll("_", " ")}</span>
+                  <Link to={`/companies/${"company_id" in project ? project.company_id : companyId}/agents/${agentId}?${searchParams}`}>
+                    Open
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       {company.isLoading && <div className="skeleton" />}
       {runs.length === 0 && companyId && !company.isLoading && visibleProjects.length === 0 && (
         <p className="empty">No project for this specialist matches the filter.</p>

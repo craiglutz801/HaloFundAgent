@@ -34,8 +34,8 @@ export function PacketReview({ principalId }: { principalId: string }) {
           </button>
         )}
       </header>
-      <p className="hash">Manifest {packet.manifest_sha256}</p>
       <p className="meta">Policy {packet.policy_version}</p>
+      <p className="hash">Manifest {packet.manifest_sha256}</p>
       {packet.decision && (
         <article className="card">
           <h2>Recorded decision: {packet.decision.decision}</h2>
@@ -56,16 +56,20 @@ export function PacketReview({ principalId }: { principalId: string }) {
       {packet.artifacts.map((artifact) => (
         <article className="card" key={artifact.id}>
           <h2>
-            {artifact.kind} {artifact.sealed_at && <span className="badge independence">sealed dissent</span>}
+            {artifact.kind.replaceAll("_", " ")} {artifact.sealed_at && <span className="badge independence">sealed dissent</span>}
           </h2>
           <p>{String(artifact.content.summary ?? "")}</p>
           <p className="hash">{artifact.sha256}</p>
         </article>
       ))}
-      <Link to={`/companies/${packet.company.id}`}>Company workspace</Link>
+      <p>
+        <Link className="button secondary" to={`/companies/${packet.company.id}`}>
+          Company workspace
+        </Link>
+      </p>
       {open && (
         <Dialog title="Record an IC decision" onClose={() => setOpen(false)}>
-          <p className="muted">This is separate from reviewing a draft. Approval moves an initial case to closing. It does not create ownership.</p>
+          <p className="muted">This is separate from reviewing a draft. Approval of an initial case opens the term sheet. It does not create a portfolio company.</p>
           <label htmlFor="decision">Decision</label>
           <select id="decision" className="field" value={decision} onChange={(event) => setDecision(event.target.value)}>
             <option value="approve">Approve</option>

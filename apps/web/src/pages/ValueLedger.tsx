@@ -2,6 +2,7 @@ import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getValueLedger } from "../api/generated";
 import { filterQuery } from "../api/queries";
+import { FilterBar } from "../components/FilterBar";
 import { ValueStatus } from "../components/ValueStatus";
 
 type Ledger = {
@@ -32,45 +33,50 @@ export function ValueLedger({ principalId }: { principalId: string }) {
     <>
       <header className="page-head">
         <div>
+          <p className="kicker">Desk</p>
           <h1>Value</h1>
           <p>Observed activity, estimated capacity, and missing money claims stay in separate rows. There is no combined total.</p>
         </div>
       </header>
-      <div className="table-wrap card">
-        <table>
-          <thead>
-            <tr>
-              <th>Company</th>
-              <th>Source</th>
-              <th>Result</th>
-              <th>Method</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data?.entries.map((entry) => (
-              <tr key={entry.id}>
-                <td>{entry.company_name}</td>
-                <td>{entry.agent_name}</td>
-                <td>
-                  <ValueStatus classification={entry.classification} amount={entry.amount} unit={entry.unit} />
-                  <div className="meta">{entry.metric}</div>
-                </td>
-                <td>{entry.method}</td>
+      <FilterBar />
+      <div className="grid two value-grid">
+        <div className="table-wrap card">
+          <table>
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Source</th>
+                <th>Result</th>
+                <th>Method</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {data?.entries.length === 0 && <p className="empty">No value entries are visible.</p>}
+            </thead>
+            <tbody>
+              {data?.entries.map((entry) => (
+                <tr key={entry.id}>
+                  <td>{entry.company_name}</td>
+                  <td>{entry.agent_name}</td>
+                  <td>
+                    <ValueStatus classification={entry.classification} amount={entry.amount} unit={entry.unit} />
+                    <div className="meta">{entry.metric.replaceAll("_", " ")}</div>
+                  </td>
+                  <td>{entry.method}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {data?.entries.length === 0 && <p className="empty">No value entries are visible.</p>}
+        </div>
+        <section className="card">
+          <h2 className="panel-title">Not claimed</h2>
+          {data?.gaps.map((gap) => (
+            <p key={`${gap.company_id}-${gap.metric}`}>
+              <span className="badge unknown">{gap.metric.replaceAll("_", " ")}</span> {gap.company_name}
+              <span className="muted"> {gap.reason}</span>
+            </p>
+          ))}
+          <p className="meta">Combined value created: {data?.total === null ? "not reported" : "unexpected"}</p>
+        </section>
       </div>
-      <section style={{ marginTop: 16 }}>
-        <h2>Unavailable</h2>
-        {data?.gaps.map((gap) => (
-          <p key={`${gap.company_id}-${gap.metric}`}>
-            <span className="badge unknown">{gap.metric.replaceAll("_", " ")}</span> {gap.company_name}: {gap.reason}
-          </p>
-        ))}
-        <p className="meta">Combined value created: {data?.total === null ? "not reported" : "unexpected"}</p>
-      </section>
     </>
   );
 }
