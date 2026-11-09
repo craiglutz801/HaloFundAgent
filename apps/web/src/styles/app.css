@@ -211,6 +211,16 @@ section.card > h2, .card > h2 { font-family: var(--serif); font-size: 1.45rem; f
   background: #fff;
 }
 .filter-bar input[type="text"] { min-width: 240px; }
+.agent-list { display: flex; flex-direction: column; gap: 10px; }
+.agent-tile h2 { margin-bottom: 6px; }
+.agent-tile p { margin: 0; }
+.agent-tile .agent-companies {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+}
 .row-actions a:not(.button) {
   font-size: 13px;
   font-weight: 620;
