@@ -79,19 +79,22 @@ ANALYST = ["workspace.read", "evidence.upload", "artifact.review"]
 
 def seed(settings: Settings | None = None) -> bool:
     settings = settings or get_settings()
-    with open_migration_session() as db:
-        existing = db.scalar(select(func.count()).select_from(Organization))
-        if existing:
-            return False
-    clear_fixture_root(settings.object_root_path)
     store = LocalObjectStore(settings.object_root_path)
     with open_migration_session() as db:
         existing = db.scalar(select(func.count()).select_from(Organization))
-        if existing:
-            return False
-        _load(db, store)
+    if not existing:
+        clear_fixture_root(settings.object_root_path)
+        with open_migration_session() as db:
+            if db.scalar(select(func.count()).select_from(Organization)):
+                return False
+            _load(db, store)
+            _load_book(db, store)
+            db.commit()
+        return True
+    with open_migration_session() as db:
+        added = _load_book(db, store)
         db.commit()
-    return True
+    return added > 0
 
 
 def database_has_live_organization(db: Session) -> bool:
@@ -235,13 +238,14 @@ class _Ctx:
         website: str,
         stage: str,
         owner: str,
+        display_name: str | None = None,
     ) -> Company:
         row = Company(
             id=fid("company", slug),
             organization_id=self.org_id,
             workspace_id=self.ws(slug),
             legal_name=legal_name,
-            display_name=slug.title(),
+            display_name=display_name or slug.title(),
             website=website,
             stage=stage,
             owner_id=fid("principal", owner),
@@ -401,6 +405,7 @@ class _Ctx:
         status: str,
         owner: str,
         detail: str = "",
+        title: str | None = None,
     ) -> AgentRun:
         assignment_id = fid("assignment", slug, case_key, agent)
         if (
@@ -416,7 +421,7 @@ class _Ctx:
                     company_id=fid("company", slug),
                     agent_id=agent,
                     investment_process_id=fid("case", slug, case_key),
-                    title=f"{agent.title()} project",
+                    title=title or f"{agent.title()} project",
                     objective=detail or "Specialist project for this process",
                     status=project_status,
                     owner_id=fid("principal", owner),
@@ -617,6 +622,129 @@ def _finding(
         validation_question=None if evidence else "What source would resolve this?",
     )
     return model.model_dump(mode="json")
+
+
+def _load_book(db: Session, store: LocalObjectStore) -> int:
+    """Add fictional companies that are not already in this fixture database."""
+    from halo.services.fixture_book import BOOK
+
+    org = db.scalar(select(Organization).where(Organization.mode == "fixture"))
+    if org is None:
+        return 0
+    roles = {
+        "jordan.hale": ("partner", PARTNER),
+        "priya.shah": ("deal_lead", DEAL),
+        "morgan.ellis": ("operating_partner", OPERATING),
+        "riley.quinn": ("cfo", CFO),
+        "avery.brooks": ("administrator", ADMIN),
+    }
+    ctx = _Ctx(db, store, org.id)
+    added = 0
+    for spec in BOOK:
+        slug = spec["slug"]
+        if db.get(Company, fid("company", slug)) is not None:
+            continue
+        workspace_id = fid("workspace", slug)
+        if db.get(Workspace, workspace_id) is None:
+            db.add(
+                Workspace(
+                    id=workspace_id,
+                    organization_id=org.id,
+                    kind="company",
+                    company_id=None,
+                    classification="company",
+                    status="active",
+                    name=spec["display_name"],
+                )
+            )
+            db.flush()
+        for subject in dict.fromkeys(spec["readers"]):
+            role, caps = roles[subject]
+            membership_id = fid("wsmem", subject, slug)
+            if db.get(WorkspaceMembership, membership_id) is None:
+                db.add(
+                    WorkspaceMembership(
+                        id=membership_id,
+                        organization_id=org.id,
+                        workspace_id=workspace_id,
+                        principal_id=fid("principal", subject),
+                        role=role,
+                        capabilities=caps,
+                        status="active",
+                    )
+                )
+        db.flush()
+        ctx.company(
+            slug,
+            legal_name=spec["legal_name"],
+            website=spec["website"],
+            stage=spec["stage"],
+            owner=spec["owner"],
+            display_name=spec["display_name"],
+        )
+        ctx.case(
+            slug,
+            "initial",
+            case_type="initial",
+            status=spec["case_status"],
+            owner=spec["owner"],
+            due_at=NOW + timedelta(days=21),
+        )
+        db.flush()
+        memo = spec["memo"].encode()
+        ctx.document(
+            slug,
+            "memo",
+            filename=f"{slug}-memo.txt",
+            mime="text/plain",
+            data=memo,
+            source_kind="partner_note",
+            origin_class="raw_company_source",
+        )
+        ctx.evidence(
+            slug,
+            "memo",
+            document_key="memo",
+            kind="partner_note",
+            locator={"kind": "text", "section": "memo"},
+            excerpt=spec["memo"],
+            origin_class="raw_company_source",
+        )
+        db.flush()
+        for job in spec["agents"]:
+            ctx.run(
+                slug,
+                job["agent"],
+                case_key="initial",
+                phase=job["phase"],
+                status=job["status"],
+                owner=spec["owner"],
+                detail=job["detail"],
+                title=job["title"],
+            )
+            db.flush()
+            if job["status"] == "queued":
+                continue
+            ctx.artifact(
+                slug,
+                f"{job['agent']}-{job['kind']}",
+                case_key="initial",
+                agent=job["agent"],
+                phase=job["phase"],
+                kind=job["kind"],
+                content=job["content"],
+                status=job["artifact_status"],
+            )
+        db.flush()
+        db.execute(
+            text(
+                "UPDATE workspaces SET company_id = :company "
+                "WHERE id = :workspace AND organization_id = :org"
+            ),
+            {"company": fid("company", slug), "workspace": workspace_id, "org": org.id},
+        )
+        added += 1
+    return added
 
 
 def _company_northline(ctx: _Ctx) -> None:

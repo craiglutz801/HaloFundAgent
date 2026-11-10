@@ -11,6 +11,8 @@ type Project = {
   company_name: string;
   title: string;
   status: string;
+  insight?: string;
+  objective?: string;
 };
 
 type AgentCard = {
@@ -90,7 +92,7 @@ export function AgentDirectory({ principalId }: { principalId: string }) {
 }
 
 function AgentTile({ agent, search, selected }: { agent: AgentCard; search: string; selected: string | null }) {
-  const companies = companyNames(agent.projects);
+  const projects = agent.projects ?? [];
   return (
     <Link
       className="card agent-tile"
@@ -102,7 +104,14 @@ function AgentTile({ agent, search, selected }: { agent: AgentCard; search: stri
         <h2>{agent.name}</h2>
         <p>{agent.job}</p>
       </div>
-      <p className="agent-companies">{companies.join(" · ")}</p>
+      <ul className="agent-book">
+        {projects.map((project) => (
+          <li key={project.id}>
+            <span>{project.company_name}</span>
+            <span>{project.insight || project.objective || project.title}</span>
+          </li>
+        ))}
+      </ul>
     </Link>
   );
 }

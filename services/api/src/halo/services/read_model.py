@@ -833,12 +833,28 @@ def agent_directory(db: Session, filt: CompanyFilter | None = None) -> dict[str,
                         "title": row.title,
                         "status": row.status,
                         "objective": row.objective,
+                        **_assignment_brief(db, row.id),
                     }
                     for row in assignments
                 ],
             }
         )
     return {"agents": cards, "applied_filters": filt.applied()}
+
+
+def _assignment_brief(db: Session, assignment_id: UUID) -> dict[str, str]:
+    artifact = db.scalars(
+        select(Artifact)
+        .join(AgentRun, AgentRun.id == Artifact.run_id)
+        .where(AgentRun.assignment_id == assignment_id)
+        .order_by(Artifact.generated_at.desc())
+    ).first()
+    content = artifact.content_json if artifact is not None else {}
+    return {
+        "insight": str(content.get("insight") or content.get("summary") or ""),
+        "recommendation": str(content.get("recommendation") or ""),
+        "next_step": str(content.get("next_step") or ""),
+    }
 
 
 def run_detail(db: Session, run_id: UUID) -> dict[str, Any]:

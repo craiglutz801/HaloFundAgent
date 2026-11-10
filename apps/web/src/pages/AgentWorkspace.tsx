@@ -1,10 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getAgents } from "../api/generated";
 import { filterQuery, useCompany } from "../api/queries";
+import type { Artifact } from "../api/types";
 import { FilterBar } from "../components/FilterBar";
+import { ReviewDialog } from "../components/ReviewDialog";
 import { RunStatus } from "../components/RunStatus";
+import { StageActions } from "../components/StageActions";
+import { WorkProduct } from "../components/WorkProduct";
+import { useHalo } from "../session";
 
 const COPY: Record<string, { name: string; job: string }> = {
   gm: { name: "GM", job: "Coordination stays with people. A prompt cannot skip a gate." },
@@ -37,11 +42,26 @@ export function AgentWorkspace({ principalId }: { principalId: string }) {
       getAgents(filterQuery(searchParams.toString())) as Promise<{
         agents: {
           id: string;
-          projects: { id: string; company_id: string; company_name: string; title: string; status: string; objective: string }[];
+          projects: {
+            id: string;
+            company_id: string;
+            company_name: string;
+            title: string;
+            status: string;
+            objective: string;
+            insight?: string;
+            recommendation?: string;
+            next_step?: string;
+          }[];
         }[];
       }>,
     enabled: !companyId,
   });
+  const { me } = useHalo();
+  const client = useQueryClient();
+  const [review, setReview] = useState<Artifact | null>(null);
+  const [error, setError] = useState("");
+  const [gaps, setGaps] = useState<{ kind: string; label: string }[]>([]);
   const profile = COPY[agentId] ?? { name: agentId, job: "" };
   const runs = (company.data?.runs ?? []).filter((run) => run.agent_name === agentId);
   const projects = directory.data?.agents.find((agent) => agent.id === agentId)?.projects ?? [];
@@ -49,6 +69,10 @@ export function AgentWorkspace({ principalId }: { principalId: string }) {
     ? (company.data?.assignments ?? []).filter((item) => item.agent_id === agentId)
     : projects;
   const artifacts = company.data?.artifacts.filter((artifact) => runs.some((run) => run.id === artifact.run_id)) ?? [];
+  const openProcess =
+    company.data?.cases.find((item) => item.outcome === "open") ??
+    company.data?.cases.find((item) => item.primary) ??
+    company.data?.cases[0];
   return (
     <>
       <header className="page-head">
@@ -62,69 +86,101 @@ export function AgentWorkspace({ principalId }: { principalId: string }) {
       {!companyId && projects.length === 0 && !directory.isLoading && (
         <p className="empty">No projects match this filter.</p>
       )}
-      {visibleProjects.length > 0 && (
-        <section className="card">
-          <h2 className="panel-title">Projects</h2>
-          <div className="roster">
-            {visibleProjects.map((project) => (
-              <div className="roster-row" key={project.id}>
-                <div>
-                  <p className="kicker">{"company_name" in project ? project.company_name : company.data?.company.display_name}</p>
-                  <strong>{project.title}</strong>
-                  {"objective" in project && project.objective ? <p className="muted">{project.objective}</p> : null}
-                </div>
-                <div className="roster-side">
-                  <span className="meta">{project.status.replaceAll("_", " ")}</span>
-                  <Link to={`/companies/${"company_id" in project ? project.company_id : companyId}/agents/${agentId}?${searchParams}`}>
-                    Open
-                  </Link>
-                </div>
+      {!companyId && projects.length > 0 && (
+        <div className="stack-gap">
+          {projects.map((project) => (
+            <article className="card agent-brief" key={project.id}>
+              <div>
+                <p className="kicker">{project.company_name}</p>
+                <h2>{project.title}</h2>
+                <p className="insight">{project.insight || project.objective}</p>
+                {project.recommendation && <p>{project.recommendation}</p>}
+                {project.next_step && <p className="next-step">Next step · {project.next_step}</p>}
               </div>
-            ))}
-          </div>
-        </section>
+              <div className="roster-side">
+                <span className="meta">{project.status.replaceAll("_", " ")}</span>
+                <Link className="button" to={`/companies/${project.company_id}/agents/${agentId}?${searchParams}`}>
+                  Open the work
+                </Link>
+              </div>
+            </article>
+          ))}
+        </div>
       )}
       {company.isLoading && <div className="skeleton" />}
-      {runs.length === 0 && companyId && !company.isLoading && visibleProjects.length === 0 && (
-        <p className="empty">No project for this specialist matches the filter.</p>
-      )}
-      {runs.map((run) => (
-        <article className="card" key={run.id}>
-          <h2>
-            {run.phase} <RunStatus status={run.status} />
-          </h2>
-          <p>{run.status_detail}</p>
-          {agentId === "mutombo" && run.phase === "independent" && run.status !== "reviewed" && (
-            <p className="badge independence">Comparison access is locked until this first pass is sealed.</p>
+      {companyId && !company.isLoading && (
+        <>
+          {error && <p className="error">{error}</p>}
+          {gaps.length > 0 && (
+            <ul>
+              {gaps.map((gap) => (
+                <li key={gap.label}>
+                  {gap.kind}: {gap.label}
+                </li>
+              ))}
+            </ul>
           )}
-          <Link to={`/companies/${companyId}/agents/${agentId}/runs/${run.id}`}>Run detail</Link>
-        </article>
-      ))}
-      {artifacts.map((artifact) => (
-        <ArtifactBody key={artifact.id} kind={artifact.kind} content={artifact.content} sealed={artifact.sealed_at} sha={artifact.sha256} />
-      ))}
+          <div className="row-actions">
+            <StageActions me={me} openProcess={openProcess} onError={setError} onGaps={setGaps} />
+            <Link className="button secondary" to={`/companies/${companyId}?${searchParams}`}>
+              Company
+            </Link>
+          </div>
+          {runs.length === 0 && visibleProjects.length === 0 && (
+            <p className="empty">No project for this specialist matches the filter.</p>
+          )}
+          {artifacts.map((artifact) => (
+            <article className="card" key={artifact.id}>
+              <div className="dossier-head">
+                <div>
+                  <p className="kicker">{artifact.kind.replaceAll("_", " ")}</p>
+                  <RunStatus status={artifact.status} />
+                </div>
+                {artifact.status !== "reviewed" && artifact.status !== "sealed" && (
+                  <button className="button" type="button" onClick={() => setReview(artifact)}>
+                    Review draft
+                  </button>
+                )}
+              </div>
+              {agentId === "mutombo" && artifact.phase === "independent" && artifact.status !== "reviewed" && artifact.sealed_at == null && (
+                <p className="badge independence">Comparison access is locked until this first pass is sealed.</p>
+              )}
+              <WorkProduct content={artifact.content} />
+              <ArtifactExtras content={artifact.content} />
+              <p className="hash">{artifact.sha256}</p>
+            </article>
+          ))}
+          {artifacts.length === 0 &&
+            runs.map((run) => (
+              <article className="card" key={run.id}>
+                <h2>
+                  {run.phase} <RunStatus status={run.status} />
+                </h2>
+                <p>{run.status_detail}</p>
+              </article>
+            ))}
+        </>
+      )}
+      {review && (
+        <ReviewDialog
+          artifact={review}
+          onClose={() => setReview(null)}
+          onSaved={() => {
+            setReview(null);
+            void client.invalidateQueries();
+          }}
+        />
+      )}
     </>
   );
 }
 
-function ArtifactBody({
-  kind,
-  content,
-  sealed,
-  sha,
-}: {
-  kind: string;
-  content: Record<string, unknown>;
-  sealed: string | null;
-  sha: string;
-}) {
+function ArtifactExtras({ content }: { content: Record<string, unknown> }) {
   const lenses = Array.isArray(content.lenses) ? content.lenses : [];
   const scenario = content.scenario as { cases?: { exit_equity: string; gross_proceeds: string; gross_moic: string }[]; limitations?: string[] } | undefined;
+  if (lenses.length === 0 && !scenario?.cases) return null;
   return (
-    <article className="card">
-      <h2>{kind}</h2>
-      {sealed && <p className="badge independence">Sealed {sealed}</p>}
-      <p>{String(content.summary ?? "")}</p>
+    <div>
       {lenses.length > 0 && (
         <div className="lens-grid">
           {lenses.map((lens) => {
@@ -166,7 +222,6 @@ function ArtifactBody({
           </ul>
         </div>
       )}
-      <p className="hash">{sha}</p>
-    </article>
+    </div>
   );
 }

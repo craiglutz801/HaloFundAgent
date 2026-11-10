@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ApiError } from "../api/client";
-import { postStageAction } from "../api/generated";
 import { useCompany } from "../api/queries";
 import type { Evidence, Me } from "../api/types";
 import { hasCapability } from "../api/types";
@@ -10,7 +8,9 @@ import { CompanyHeader } from "../components/CompanyHeader";
 import { EvidenceDrawer } from "../components/EvidenceDrawer";
 import { FilterBar } from "../components/FilterBar";
 import { ReviewDialog } from "../components/ReviewDialog";
+import { StageActions } from "../components/StageActions";
 import { StageTimeline } from "../components/StageTimeline";
+import { WorkProduct } from "../components/WorkProduct";
 import { WorkstreamTrack } from "../components/WorkstreamTrack";
 
 export function CompanyWorkspace({ principalId, me }: { principalId: string; me: Me }) {
@@ -108,6 +108,32 @@ export function CompanyWorkspace({ principalId, me }: { principalId: string; me:
               ))}
             </div>
           </section>
+          {data.artifacts.length > 0 && (
+            <section className="stack-gap">
+              <h2>Agent work</h2>
+              {data.artifacts.map((artifact) => {
+                const run = data.runs.find((item) => item.id === artifact.run_id);
+                return (
+                  <article className="card" key={artifact.id}>
+                    <p className="kicker">{run?.agent_name ?? artifact.kind.replaceAll("_", " ")}</p>
+                    <WorkProduct content={artifact.content} />
+                    <div className="row-actions">
+                      {hasCapability(me, "artifact.review") && artifact.status !== "reviewed" && artifact.status !== "sealed" && (
+                        <button className="button" type="button" onClick={() => setReviewId(artifact.id)}>
+                          Review draft
+                        </button>
+                      )}
+                      {run && (
+                        <Link to={`/companies/${data.company.id}/agents/${run.agent_name}${search ? `?${search}` : ""}`}>
+                          Open {run.agent_name}
+                        </Link>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
+          )}
           {data.runs.length > 0 && (
             <section>
               <h2>Runs</h2>
@@ -192,63 +218,5 @@ export function CompanyWorkspace({ principalId, me }: { principalId: string; me:
         />
       )}
     </>
-  );
-}
-
-function StageActions({
-  me,
-  openProcess,
-  onError,
-  onGaps,
-}: {
-  me: Me;
-  openProcess: { id: string; phase?: string; row_version: number } | undefined;
-  onError: (message: string) => void;
-  onGaps: (gaps: { kind: string; label: string }[]) => void;
-}) {
-  const client = useQueryClient();
-  if (!openProcess) return null;
-  async function act(action: string, rationale: string) {
-    if (!openProcess) return;
-    onError("");
-    onGaps([]);
-    try {
-      await postStageAction(openProcess.id, {
-        action,
-        rationale,
-        expected_case_version: openProcess.row_version,
-      });
-      await client.invalidateQueries();
-    } catch (caught) {
-      if (caught instanceof ApiError) {
-        onError(caught.message);
-        const missing = caught.details.missing_requirements;
-        onGaps(Array.isArray(missing) ? (missing as { kind: string; label: string }[]) : []);
-      }
-    }
-  }
-  return (
-    <div className="row-actions">
-      {openProcess.phase === "due_diligence" && hasCapability(me, "case.submit_ic") && (
-        <button className="button" type="button" onClick={() => void act("submit_ic", "Submit the current diligence case to investment committee.")}>
-          Submit to IC
-        </button>
-      )}
-      {openProcess.phase === "sourcing" && hasCapability(me, "ic.decide") && (
-        <button className="button secondary" type="button" onClick={() => void act("accept_first_look", "Partner accepts a first look on the sourced profile.")}>
-          Accept into screening
-        </button>
-      )}
-      {openProcess.phase === "term_sheet" && hasCapability(me, "ic.decide") && (
-        <button className="button secondary" type="button" onClick={() => void act("advance_closing", "Open negotiation and closing from the approved term sheet.")}>
-          Open closing
-        </button>
-      )}
-      {openProcess.phase === "negotiation_closing" && hasCapability(me, "ic.decide") && (
-        <button className="button" type="button" onClick={() => void act("confirm_close", "Confirm the close. This is the step that creates the portfolio record.")}>
-          Confirm close
-        </button>
-      )}
-    </div>
   );
 }

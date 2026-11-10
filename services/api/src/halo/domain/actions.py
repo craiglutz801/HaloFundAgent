@@ -268,6 +268,8 @@ def stage_action(
     if action not in {
         "submit_ic",
         "accept_first_look",
+        "advance_partner_review",
+        "open_diligence",
         "advance_closing",
         "confirm_close",
         "pass",
@@ -279,12 +281,16 @@ def stage_action(
         db, case.organization_id, case.workspace_id, "case.submit_ic"
     ):
         raise HaloError(403, "FORBIDDEN", "You cannot submit this case to IC.")
-    if action == "accept_first_look" and not has_capability(
+    if action in {"accept_first_look", "advance_partner_review"} and not has_capability(
         db, case.organization_id, case.workspace_id, "ic.decide"
     ):
         raise HaloError(
-            403, "FORBIDDEN", "Accepting a first look requires explicit investment authority."
+            403, "FORBIDDEN", "Moving a process forward requires explicit investment authority."
         )
+    if action == "open_diligence" and not has_capability(
+        db, case.organization_id, case.workspace_id, "case.submit_ic"
+    ):
+        raise HaloError(403, "FORBIDDEN", "Opening diligence requires deal authority.")
     if action in {"advance_closing", "confirm_close"} and not has_capability(
         db, case.organization_id, case.workspace_id, "ic.decide"
     ):
@@ -323,6 +329,18 @@ def stage_action(
         _move(db, actor, company, case, "first_look", rationale.strip(), "stage_action", None)
         case.status = "first_look"
         case.phase = "screening"
+    elif action == "advance_partner_review":
+        if case.phase != "screening":
+            raise HaloError(409, "GATE_NOT_MET", "Partner review opens from screening.")
+        _move(db, actor, company, case, "partner_review", rationale.strip(), "stage_action", None)
+        case.status = "partner_review"
+        case.phase = "partner_review"
+    elif action == "open_diligence":
+        if case.phase != "partner_review":
+            raise HaloError(409, "GATE_NOT_MET", "Diligence opens from partner review.")
+        _move(db, actor, company, case, "diligence", rationale.strip(), "stage_action", None)
+        case.status = "diligence"
+        case.phase = "due_diligence"
     elif action == "advance_closing":
         if case.phase != "term_sheet":
             raise HaloError(409, "GATE_NOT_MET", "Closing opens from the term sheet phase.")
