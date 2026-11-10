@@ -102,7 +102,7 @@ function AgentTile({ agent, search, selected }: { agent: AgentCard; search: stri
       <div>
         <p className="kicker">{agent.output.replace(/([a-z])([A-Z])/g, "$1 $2")}</p>
         <h2>{agent.name}</h2>
-        <p>{agent.job}</p>
+        <p className="agent-job">{agent.job}</p>
       </div>
       <ul className="agent-book">
         {projects.map((project) => (

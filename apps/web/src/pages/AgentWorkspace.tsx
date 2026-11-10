@@ -79,7 +79,7 @@ export function AgentWorkspace({ principalId }: { principalId: string }) {
         <div>
           <p className="kicker">{company.data?.company.display_name ?? "Specialist"}</p>
           <h1>{profile.name}</h1>
-          <p>{profile.job}</p>
+          <p className="agent-job">{profile.job}</p>
         </div>
       </header>
       <FilterBar />

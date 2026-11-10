@@ -247,6 +247,14 @@ a.agent-tile {
 }
 .agent-tile h2 { margin: 0 0 4px; }
 .agent-tile p { margin: 0; }
+.agent-job, .page-head .agent-job {
+  margin: 6px 0 0;
+  max-width: 42rem;
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+  line-height: 1.45;
+}
 a.agent-tile .agent-companies {
   margin: 0;
   color: var(--muted);
