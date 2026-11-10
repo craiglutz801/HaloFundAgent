@@ -49,7 +49,7 @@ export function AppShell({
             <strong>HALO</strong>
             <span>Front Office</span>
           </div>
-          <img className="brand-mark" src="/halo-mark.jpg" alt="" width="44" height="44" />
+          <img className="brand-mark" src="/halo-mark.svg" alt="" width="44" height="44" />
         </div>
         <nav>
           {GROUPS.map((group) => (
@@ -77,7 +77,7 @@ export function AppShell({
       <div className="mobile-nav">
         <div className="mobile-brand">
           <span>Halo Front Office</span>
-          <img className="brand-mark" src="/halo-mark.jpg" alt="" width="36" height="36" />
+          <img className="brand-mark" src="/halo-mark.svg" alt="" width="36" height="36" />
         </div>
         <select
           aria-label="Section"

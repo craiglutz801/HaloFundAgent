@@ -128,7 +128,7 @@ export function SignIn() {
     <main className="signin">
       <div className="brand-lockup">
         <p className="kicker">Halo Front Office</p>
-        <img className="brand-mark" src="/halo-mark.jpg" alt="" width="44" height="44" />
+        <img className="brand-mark" src="/halo-mark.svg" alt="" width="44" height="44" />
       </div>
       <h1>{session.needsAccessCode ? "Demo access" : "Fixture sign-in"}</h1>
       <p className="lede">

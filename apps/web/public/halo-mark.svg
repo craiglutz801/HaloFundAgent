@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Halo">
+  <rect width="64" height="64" rx="14" fill="#ffffff"/>
+  <ellipse cx="32" cy="15.5" rx="13.5" ry="5" fill="none" stroke="#111111" stroke-width="2"/>
+  <rect x="18" y="26" width="8" height="26" rx="1" fill="#111111"/>
+  <rect x="38" y="26" width="8" height="26" rx="1" fill="#111111"/>
+  <rect x="18" y="35.5" width="28" height="7" fill="#111111"/>
+</svg>
