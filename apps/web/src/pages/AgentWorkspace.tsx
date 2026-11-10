@@ -12,15 +12,15 @@ import { WorkProduct } from "../components/WorkProduct";
 import { useHalo } from "../session";
 
 const COPY: Record<string, { name: string; job: string }> = {
-  gm: { name: "GM", job: "Coordination stays with people. A prompt cannot skip a gate." },
-  scout: { name: "Scout", job: "Missing dimensions stay empty. Fit is not a probability." },
-  ainge: { name: "Ainge", job: "Numeric conclusions cite inputs. Gross MOIC is not a net fund return." },
-  xavier: { name: "Xavier", job: "Four lenses. An evidence gap stays unscored. There is no overall score." },
-  mutombo: { name: "Mutombo", job: "The independent pass is sealed before comparison grants open." },
-  stockton: { name: "Stockton", job: "Tagged activity is not revenue. Inventory is not booked from a thesis." },
-  sloan: { name: "Sloan", job: "Estimated capacity is not cash saved." },
-  trainer: { name: "Trainer", job: "Missing or stale required reporting is unknown, not green." },
-  scorekeeper: { name: "Scorekeeper", job: "Decisions stay tied to the packet hash that was approved." },
+  gm: { name: "GM", job: "Keeps track of who is working and which decision is waiting on a person. An agent cannot take a step that a partner still has to approve." },
+  scout: { name: "Scout", job: "Looks for a concrete reason Halo should take a meeting. If a fact is missing, it stays blank instead of being guessed." },
+  ainge: { name: "Ainge", job: "Writes the investment case and shows which assumptions it depends on. The result is for this company, not a return for the whole fund." },
+  xavier: { name: "Xavier", job: "Compares what the company says with what customers, employees, the brand, and the product actually show. A missing source stays blank instead of becoming a score." },
+  mutombo: { name: "Mutombo", job: "Writes the argument against the deal before reading anyone else's conclusion. That first pass is locked before it can be compared with other work." },
+  stockton: { name: "Stockton", job: "Plans how Halo would help a company get going after an investment. Customer interest is not sales, and a plan does not reserve product." },
+  sloan: { name: "Sloan", job: "Suggests practical operating work and counts time that could be freed up. Time saved is not the same as money saved." },
+  trainer: { name: "Trainer", job: "Checks whether companies Halo owns are sending the reports they owe. A missing or late report is unknown, not healthy." },
+  scorekeeper: { name: "Scorekeeper", job: "Keeps the record of decisions and the evidence behind them. A decision stays attached to the exact materials that were approved." },
 };
 
 export function AgentWorkspace({ principalId }: { principalId: string }) {
