@@ -1,25 +1,26 @@
 :root {
-  --bg: #f6f6f6;
+  /* Utah Mammoth: Rock Black, Mountain Blue (Pantone 292 C), Salt White. */
+  --bg: #f4f8fb;
   --paper: #ffffff;
-  --paper-2: #f3f3f3;
-  --navy: #111111;
+  --paper-2: #e7f3fb;
+  --navy: #010101;
   --navy-2: #000000;
-  --ink: #111111;
-  --blue: #111111;
-  --blue-ink: #111111;
-  --muted: #5e5e5e;
-  --line: #e6e6e6;
-  --line-strong: #c8c8c8;
-  --gold: #111111;
-  --gold-soft: rgba(0, 0, 0, 0.08);
+  --ink: #010101;
+  --blue: #69b3e7;
+  --blue-ink: #0b4f78;
+  --muted: #3e5364;
+  --line: #d4e4f0;
+  --line-strong: #9ec8e6;
+  --gold: #69b3e7;
+  --gold-soft: rgba(105, 179, 231, 0.22);
   --white: #ffffff;
-  --purple: #111111;
-  --red: #111111;
-  --red-bg: #f3f3f3;
-  --amber: #111111;
-  --amber-bg: #f3f3f3;
-  --green: #111111;
-  --green-bg: #f3f3f3;
+  --purple: #0b4f78;
+  --red: #010101;
+  --red-bg: #e7f3fb;
+  --amber: #010101;
+  --amber-bg: #e7f3fb;
+  --green: #010101;
+  --green-bg: #e7f3fb;
   --shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 1px 2px rgba(0, 0, 0, 0.04), 0 16px 36px rgba(0, 0, 0, 0.05);
   --radius: 18px;
   --rail: 248px;
@@ -45,5 +46,5 @@ button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: var(--blue-ink); text-decoration: none; }
 a:hover { text-decoration: underline; }
-::selection { background: #e8e8e8; color: #111; }
+::selection { background: #c5e4f6; color: #010101; }
 :focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
