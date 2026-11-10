@@ -12,15 +12,15 @@ import { WorkProduct } from "../components/WorkProduct";
 import { useHalo } from "../session";
 
 const COPY: Record<string, { name: string; job: string }> = {
-  gm: { name: "GM", job: "Keeps track of who is working and which decision is waiting on a person. An agent cannot take a step that a partner still has to approve." },
-  scout: { name: "Scout", job: "Looks for a concrete reason Halo should take a meeting. If a fact is missing, it stays blank instead of being guessed." },
-  ainge: { name: "Ainge", job: "Writes the investment case and shows which assumptions it depends on. The result is for this company, not a return for the whole fund." },
-  xavier: { name: "Xavier", job: "Compares what the company says with what customers, employees, the brand, and the product actually show. A missing source stays blank instead of becoming a score." },
-  mutombo: { name: "Mutombo", job: "Writes the argument against the deal before reading anyone else's conclusion. That first pass is locked before it can be compared with other work." },
-  stockton: { name: "Stockton", job: "Plans how Halo would help a company get going after an investment. Customer interest is not sales, and a plan does not reserve product." },
-  sloan: { name: "Sloan", job: "Suggests practical operating work and counts time that could be freed up. Time saved is not the same as money saved." },
-  trainer: { name: "Trainer", job: "Checks whether companies Halo owns are sending the reports they owe. A missing or late report is unknown, not healthy." },
-  scorekeeper: { name: "Scorekeeper", job: "Keeps the record of decisions and the evidence behind them. A decision stays attached to the exact materials that were approved." },
+  gm: { name: "GM", job: "Keeps work moving across companies and agents. Tracks owners, deadlines and open questions so partners know what needs their attention." },
+  scout: { name: "Scout", job: "Finds companies that fit Halo's investment interests and surfaces a clear reason to take a closer look. Connects market signals, company evidence and potential fit with Halo's relationships." },
+  ainge: { name: "Ainge", job: "Builds the investment case by examining the business, market, economics and valuation. Models potential returns and makes the assumptions behind them clear." },
+  xavier: { name: "Xavier", job: "Examines how customers, employees and the market experience a company's product and brand. Surfaces strengths, friction and opportunities that financials alone may not reveal." },
+  mutombo: { name: "Mutombo", job: "Builds an independent bear case and challenges the assumptions behind an investment. Checks claims against evidence and highlights risks and unanswered questions worth pursuing." },
+  stockton: { name: "Stockton", job: "Identifies ways Halo's sports, entertainment and business relationships could help a company grow. Turns those opportunities into company-specific plans and tracks what they produce." },
+  sloan: { name: "Sloan", job: "Finds practical ways to improve a company's operations through better processes and AI. Tracks results and turns successful improvements into playbooks Halo can reuse." },
+  trainer: { name: "Trainer", job: "Monitors portfolio performance against plan and surfaces changes that need attention. Prepares clear updates for board discussions and follow-on investment decisions." },
+  scorekeeper: { name: "Scorekeeper", job: "Connects the evidence, investment decisions and company outcomes in one lasting record. Prepares reporting drafts and captures lessons that can inform Halo's next investment." },
 };
 
 export function AgentWorkspace({ principalId }: { principalId: string }) {
