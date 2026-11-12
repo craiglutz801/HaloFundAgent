@@ -31,12 +31,14 @@ clear_settings_cache()
 RESPONSE_TYPES = {
     ("get", "/api/v1/me"): "Me",
     ("get", "/api/v1/overview"): "Overview",
-    ("get", "/api/v1/companies"): "{ items: CompanyCard[] }",
+    ("get", "/api/v1/companies"): "{ items: CompanyCard[]; counts?: { distinct_companies: number; processes: number }; applied_filters?: Record<string, unknown> }",
     ("get", "/api/v1/companies/{company_id}"): "CompanyDetail",
     ("get", "/api/v1/evidence/{evidence_id}"): "Evidence",
     ("get", "/api/v1/ic-packets/{packet_id}"): "Packet",
     ("get", "/api/v1/health"): "{ status: string; mode: string }",
     ("get", "/api/v1/auth/csrf"): "{ csrf_token: string }",
+    ("get", "/api/v1/auth/demo-access"): "{ required: boolean; accepted: boolean }",
+    ("post", "/api/v1/auth/demo-access"): "{ required: boolean; accepted: boolean }",
     ("get", "/api/v1/auth/fixture-principals"): "{ principals: RosterPerson[] }",
     ("post", "/api/v1/auth/fixture-login"): "{ csrf_token: string }",
 }
@@ -44,6 +46,8 @@ RESPONSE_TYPES = {
 NAMES = {
     ("get", "/api/v1/health"): "getHealth",
     ("get", "/api/v1/auth/csrf"): "getCsrf",
+    ("get", "/api/v1/auth/demo-access"): "getDemoAccess",
+    ("post", "/api/v1/auth/demo-access"): "postDemoAccess",
     ("get", "/api/v1/auth/fixture-principals"): "getFixturePrincipals",
     ("post", "/api/v1/auth/fixture-login"): "postFixtureLogin",
     ("post", "/api/v1/auth/logout"): "postLogout",

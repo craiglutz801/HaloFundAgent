@@ -43,13 +43,37 @@ export type Overview = {
 
 export type CompanyCard = {
   id: string;
+  process_id?: string;
   display_name: string;
   legal_name: string;
   website: string;
   stage: string;
+  phase?: string;
+  phase_label?: string;
+  outcome?: string;
+  on_hold?: boolean;
+  case_type?: string;
   owner_name: string;
   open_blocking_concerns: number;
   row_version: number;
+  active_agents?: string[];
+};
+
+export type AssignmentCard = {
+  id: string;
+  agent_id: string;
+  agent_name: string;
+  title: string;
+  objective: string;
+  status: string;
+  working_now: boolean;
+  working_state: string | null;
+  process_id: string | null;
+  phase: string | null;
+  phase_label: string | null;
+  last_activity_at: string | null;
+  run_id: string | null;
+  run_status: string | null;
 };
 
 export type Evidence = {
@@ -85,6 +109,11 @@ export type CompanyDetail = {
     legal_name: string;
     display_name: string;
     website: string;
+    industry?: string;
+    summary?: string;
+    revenue_note?: string;
+    headcount_note?: string;
+    trajectory?: string;
     stage: string;
     owner_name: string;
     row_version: number;
@@ -97,8 +126,16 @@ export type CompanyDetail = {
     due_at: string | null;
     row_version: number;
     policy_version: string;
+    phase?: string;
+    phase_label?: string;
+    outcome?: string;
+    on_hold?: boolean;
+    primary?: boolean;
     ic_gaps: { kind: string; label: string }[];
   }[];
+  assignments?: AssignmentCard[];
+  applied_filters?: Record<string, unknown>;
+  filter_restricted?: boolean;
   stage_events: { id: string; from_stage: string; to_stage: string; reason: string; created_at: string }[];
   concerns: {
     id: string;
@@ -141,6 +178,37 @@ export type Packet = {
   decision: { id: string; decision: string; rationale: string; decided_at: string; packet_sha256: string } | null;
 };
 
+export const PHASES = [
+  "sourcing",
+  "screening",
+  "partner_review",
+  "due_diligence",
+  "investment_committee",
+  "term_sheet",
+  "negotiation_closing",
+] as const;
+
+export const PHASE_SHORT: Record<string, string> = {
+  sourcing: "Source",
+  screening: "Screen",
+  partner_review: "Partner",
+  due_diligence: "Diligence",
+  investment_committee: "Committee",
+  term_sheet: "Terms",
+  negotiation_closing: "Close",
+};
+
+export const PHASE_LABELS: Record<string, string> = {
+  sourcing: "Sourcing",
+  screening: "Screening",
+  partner_review: "Deep dive / Partner review",
+  due_diligence: "Due diligence",
+  investment_committee: "Investment Committee",
+  term_sheet: "Term sheet",
+  negotiation_closing: "Negotiation / Closing",
+  unknown: "Phase unknown",
+};
+
 export const STAGES = [
   "discovered",
   "first_look",
@@ -152,7 +220,11 @@ export const STAGES = [
 ] as const;
 
 export function stageLabel(stage: string) {
-  return stage.replaceAll("_", " ");
+  return PHASE_LABELS[stage] ?? stage.replaceAll("_", " ");
+}
+
+export function phaseLabel(phase: string) {
+  return PHASE_LABELS[phase] ?? phase.replaceAll("_", " ");
 }
 
 export function formatWhen(value: string | null | undefined) {

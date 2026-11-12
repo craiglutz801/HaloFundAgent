@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { RunStatus } from "../components/RunStatus";
+import { WorkProduct } from "../components/WorkProduct";
 
 type RunDetail = {
   id: string;
@@ -12,7 +13,7 @@ type RunDetail = {
   company_id: string | null;
   company_name: string | null;
   comparison_locked: boolean;
-  artifacts: { id: string; kind: string; sha256: string; content: { summary?: string } }[];
+  artifacts: { id: string; kind: string; sha256: string; content: Record<string, unknown> }[];
 };
 
 export function RunPage({ principalId }: { principalId: string }) {
@@ -39,8 +40,8 @@ export function RunPage({ principalId }: { principalId: string }) {
       {run.comparison_locked && <p className="badge independence">Comparison access is locked.</p>}
       {run.artifacts.map((artifact) => (
         <article className="card" key={artifact.id}>
-          <h2>{artifact.kind}</h2>
-          <p>{artifact.content.summary}</p>
+          <h2>{artifact.kind.replaceAll("_", " ")}</h2>
+          <WorkProduct content={artifact.content} />
           <p className="hash">{artifact.sha256}</p>
         </article>
       ))}

@@ -21,6 +21,7 @@ from halo.models.fake_adapter import FakeModelGateway
 from halo.models.gateway import GenerateRequest
 from halo.models.openai_adapter import OpenAIAdapter
 from halo.models.schemas import LensAssessment, XavierScorecard
+from halo.services.demo_host import database_url_for_role
 from halo.settings import Settings, assert_fixture_reset_target
 
 
@@ -42,6 +43,49 @@ def test_live_mode_rejects_fake_provider():
         )
 
 
+def test_postgres_url_accepts_platform_schemes():
+    settings = Settings(
+        database_url="postgres://halo:secret@db.internal:5432/halo_demo",
+        migration_database_url="postgresql://halo:secret@db.internal:5432/halo_demo",
+    )
+    assert settings.database_url.startswith("postgresql+psycopg://")
+    assert settings.migration_database_url.startswith("postgresql+psycopg://")
+
+
+def test_demo_mode_rejects_an_open_or_live_database():
+    common = dict(
+        halo_mode="demo",
+        halo_bind_host="0.0.0.0",
+        model_provider="fake",
+        session_cookie_secure=True,
+        session_secret="x" * 32,
+        demo_access_code="review-demo",
+        app_origin="https://halo.example",
+    )
+    with pytest.raises(RuntimeError, match="fixture"):
+        Settings(database_url="postgresql+psycopg://halo@db/halo", migration_database_url="postgresql+psycopg://halo@db/halo", **common).assert_demo_boot()
+    with pytest.raises(RuntimeError, match="live"):
+        Settings(
+            database_url="postgresql+psycopg://halo@db/halo_live_demo",
+            migration_database_url="postgresql+psycopg://halo@db/halo_live_demo",
+            **common,
+        ).assert_demo_boot()
+    with pytest.raises(RuntimeError, match="DEMO_ACCESS_CODE"):
+        short = dict(common)
+        short["demo_access_code"] = "short"
+        Settings(
+            database_url="postgresql+psycopg://halo@db/halo_demo",
+            migration_database_url="postgresql+psycopg://halo@db/halo_demo",
+            **short,
+        ).assert_demo_boot()
+    ready = Settings(
+        database_url="postgresql+psycopg://halo@db/halo_demo",
+        migration_database_url="postgresql+psycopg://halo@db/halo_demo",
+        **common,
+    )
+    ready.assert_demo_boot()
+
+
 def test_reset_refuses_non_fixture_names():
     with pytest.raises(RuntimeError, match="fixture"):
         assert_fixture_reset_target("postgresql+psycopg://halo@db/halo", "fixture")
@@ -50,6 +94,17 @@ def test_reset_refuses_non_fixture_names():
     with pytest.raises(RuntimeError, match="HALO_MODE"):
         assert_fixture_reset_target("postgresql+psycopg://halo@db/halo_fixture", "live")
     assert assert_fixture_reset_target("postgresql+psycopg://halo@db/halo_fixture", "fixture") == "halo_fixture"
+
+
+def test_demo_app_url_replaces_only_the_role():
+    url = database_url_for_role(
+        "postgresql+psycopg://owner:secret@db.internal:5432/halo_demo?sslmode=require",
+        "halo_app",
+        "abc123",
+    )
+    assert url == (
+        "postgresql+psycopg://halo_app:abc123@db.internal:5432/halo_demo?sslmode=require"
+    )
 
 
 def test_illustrative_gross_moic_fixture():

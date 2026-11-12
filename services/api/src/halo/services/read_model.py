@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from halo.calculations.health import DefinitionView, ObservationView, evaluate_health
 from halo.db.models import (
+    AgentAssignment,
     AgentRun,
     Artifact,
     Company,
@@ -33,69 +34,77 @@ from halo.db.models import (
     WorkspaceMembership,
 )
 from halo.domain.actions import has_capability, ic_gaps
+from halo.domain.lifecycle import (
+    ACTIVE_ASSIGNMENT,
+    PAST_ASSIGNMENT,
+    PHASES,
+    CompanyFilter,
+    phase_label,
+)
 from halo.errors import HaloError
+from halo.services.company_query import matching_cases
 
 AGENTS = [
     {
         "id": "gm",
         "name": "GM",
-        "job": "Route bounded work, detect stalls, and summarize decisions needed.",
+        "job": "Keeps work moving across companies and agents. Tracks owners, deadlines and open questions so partners know what needs their attention.",
         "output": "PartnerBrief",
         "owner": "Managing partner",
     },
     {
         "id": "scout",
         "name": "Scout",
-        "job": "Find an evidenced reason for Halo to meet a company.",
+        "job": "Finds companies that fit Halo's investment interests and surfaces a clear reason to take a closer look. Connects market signals, company evidence and potential fit with Halo's relationships.",
         "output": "ScoutShortlist",
         "owner": "Investment partner",
     },
     {
         "id": "ainge",
         "name": "Ainge",
-        "job": "Produce a sourced investment case and expose the assumptions that could change it.",
+        "job": "Builds the investment case by examining the business, market, economics and valuation. Models potential returns and makes the assumptions behind them clear.",
         "output": "AingeReport",
         "owner": "Deal lead",
     },
     {
         "id": "xavier",
         "name": "Xavier",
-        "job": "Compare the company story with customer, employee, brand, and product evidence.",
+        "job": "Examines how customers, employees and the market experience a company's product and brand. Surfaces strengths, friction and opportunities that financials alone may not reveal.",
         "output": "XavierScorecard",
         "owner": "Deal lead",
     },
     {
         "id": "mutombo",
         "name": "Mutombo",
-        "job": "Form an independent bear case, then check assembled claims.",
+        "job": "Builds an independent bear case and challenges the assumptions behind an investment. Checks claims against evidence and highlights risks and unanswered questions worth pursuing.",
         "output": "IndependentRiskReport",
         "owner": "Deal lead and IC",
     },
     {
         "id": "stockton",
         "name": "Stockton",
-        "job": "Plan platform activation without booking inventory or promising access.",
+        "job": "Identifies ways Halo's sports, entertainment and business relationships could help a company grow. Turns those opportunities into company-specific plans and tracks what they produce.",
         "output": "ActivationThesis",
         "owner": "Platform lead",
     },
     {
         "id": "sloan",
         "name": "Sloan",
-        "job": "Recommend operating work and separate capacity from cash saved.",
+        "job": "Finds practical ways to improve a company's operations through better processes and AI. Tracks results and turns successful improvements into playbooks Halo can reuse.",
         "output": "OperatingRoadmap",
         "owner": "Operating partner",
     },
     {
         "id": "trainer",
         "name": "Trainer",
-        "job": "Report portfolio health and prepare board discussion.",
+        "job": "Monitors portfolio performance against plan and surfaces changes that need attention. Prepares clear updates for board discussions and follow-on investment decisions.",
         "output": "PortfolioHealth",
         "owner": "Board member",
     },
     {
         "id": "scorekeeper",
         "name": "Scorekeeper",
-        "job": "Keep the decision journal, value evidence, and release-controlled reporting.",
+        "job": "Connects the evidence, investment decisions and company outcomes in one lasting record. Prepares reporting drafts and captures lessons that can inform Halo's next investment.",
         "output": "DecisionRetrospective",
         "owner": "CFO",
     },
@@ -119,6 +128,135 @@ def _names(db: Session, ids: set[UUID]) -> dict[UUID, str]:
         return {}
     rows = db.scalars(select(Principal).where(Principal.id.in_(ids))).all()
     return {row.id: row.display_name for row in rows}
+
+
+def _process_list_item(
+    db: Session, case: InvestmentCase, company: Company, names: dict[UUID, str]
+) -> dict[str, Any]:
+    blocking = db.scalar(
+        select(func.count())
+        .select_from(Concern)
+        .where(Concern.case_id == case.id, Concern.status == "open", Concern.blocking.is_(True))
+    )
+    active = db.scalars(
+        select(AgentAssignment.agent_id).where(
+            AgentAssignment.investment_process_id == case.id,
+            AgentAssignment.status.in_(ACTIVE_ASSIGNMENT),
+        )
+    ).all()
+    labels = [
+        next((item["name"] for item in AGENTS if item["id"] == agent_id), agent_id)
+        for agent_id in active
+    ]
+    return {
+        "id": str(company.id),
+        "process_id": str(case.id),
+        "display_name": company.display_name,
+        "legal_name": company.legal_name,
+        "website": company.website,
+        "stage": company.stage,
+        "phase": case.phase,
+        "phase_label": phase_label(case.phase),
+        "outcome": case.outcome,
+        "on_hold": case.on_hold,
+        "case_type": case.case_type,
+        "owner_name": names.get(company.owner_id, ""),
+        "open_blocking_concerns": int(blocking or 0),
+        "row_version": company.row_version,
+        "active_agents": labels,
+    }
+
+
+def _primary_process(db: Session, company_id: UUID) -> InvestmentCase | None:
+    rows = db.scalars(
+        select(InvestmentCase)
+        .where(InvestmentCase.company_id == company_id, InvestmentCase.case_type != "exit")
+        .order_by(InvestmentCase.created_at)
+    ).all()
+    for row in rows:
+        if row.case_type == "initial":
+            return row
+    return rows[0] if rows else None
+
+
+def _assignment_query(filt: CompanyFilter):
+    stmt = select(AgentAssignment).where(
+        AgentAssignment.investment_process_id.in_(matching_cases(filt))
+    )
+    if filt.agent_id:
+        stmt = stmt.where(AgentAssignment.agent_id == filt.agent_id)
+    if filt.scope == "active":
+        stmt = stmt.where(AgentAssignment.status.in_(ACTIVE_ASSIGNMENT))
+    elif filt.scope == "paused":
+        stmt = stmt.where(AgentAssignment.status == "paused")
+    elif filt.scope == "past":
+        stmt = stmt.where(AgentAssignment.status.in_(PAST_ASSIGNMENT))
+    return stmt
+
+
+def _assignments(db: Session, company_id: UUID, filt: CompanyFilter) -> list[dict[str, Any]]:
+    scoped = CompanyFilter(
+        q=filt.q,
+        agent_id=filt.agent_id,
+        phase=filt.phase,
+        outcome=filt.outcome,
+        scope=filt.scope,
+        monitor=filt.monitor,
+        company_id=company_id,
+        funnel=False,
+    )
+    rows = db.scalars(
+        _assignment_query(scoped)
+        .where(AgentAssignment.company_id == company_id)
+        .order_by(AgentAssignment.agent_id, AgentAssignment.title)
+    ).all()
+    return [_assignment_card(db, row) for row in rows]
+
+
+def _assignment_card(db: Session, row: AgentAssignment) -> dict[str, Any]:
+    run = db.scalar(
+        select(AgentRun)
+        .where(AgentRun.assignment_id == row.id)
+        .order_by(AgentRun.created_at.desc())
+    )
+    fresh = False
+    if run is not None and run.status == "running" and run.heartbeat_at is not None:
+        fresh = run.heartbeat_at >= datetime.now(timezone.utc) - timedelta(seconds=120)
+    agent = next((item for item in AGENTS if item["id"] == row.agent_id), None)
+    process = (
+        db.get(InvestmentCase, row.investment_process_id) if row.investment_process_id else None
+    )
+    return {
+        "id": str(row.id),
+        "agent_id": row.agent_id,
+        "agent_name": agent["name"] if agent else row.agent_id,
+        "title": row.title,
+        "objective": row.objective,
+        "status": row.status,
+        "working_now": bool(fresh),
+        "working_state": "working"
+        if fresh
+        else ("unknown" if run is not None and run.status == "running" else None),
+        "process_id": str(row.investment_process_id) if row.investment_process_id else None,
+        "phase": process.phase if process else None,
+        "phase_label": phase_label(process.phase) if process else None,
+        "last_activity_at": _iso(row.last_activity_at),
+        "run_id": str(run.id) if run else None,
+        "run_status": run.status if run else None,
+    }
+
+
+def _case_matches(db: Session, filt: CompanyFilter, case_id: UUID) -> bool:
+    if not filt.applied():
+        return True
+    return (
+        db.scalar(
+            select(InvestmentCase.id).where(
+                InvestmentCase.id == case_id, InvestmentCase.id.in_(matching_cases(filt))
+            )
+        )
+        is not None
+    )
 
 
 def me(db: Session, principal_id: str) -> dict[str, Any]:
@@ -153,7 +291,8 @@ def me(db: Session, principal_id: str) -> dict[str, Any]:
     }
 
 
-def overview(db: Session, principal_id: str) -> dict[str, Any]:
+def overview(db: Session, principal_id: str, filt: CompanyFilter | None = None) -> dict[str, Any]:
+    filt = filt or CompanyFilter(funnel=False)
     actor = UUID(principal_id)
     packets = db.scalars(select(IcPacket).where(IcPacket.status == "frozen")).all()
     decisions = []
@@ -165,6 +304,8 @@ def overview(db: Session, principal_id: str) -> dict[str, Any]:
         case = db.get(InvestmentCase, packet.case_id)
         company = db.get(Company, case.company_id) if case else None
         if case is None or company is None:
+            continue
+        if not _case_matches(db, filt, case.id):
             continue
         owner = db.get(Principal, case.owner_id)
         reason = (
@@ -193,7 +334,7 @@ def overview(db: Session, principal_id: str) -> dict[str, Any]:
     for concern in concerns:
         case = db.get(InvestmentCase, concern.case_id)
         company = db.get(Company, case.company_id) if case else None
-        if company is None:
+        if company is None or case is None or not _case_matches(db, filt, case.id):
             continue
         blockers.append(
             {
@@ -207,7 +348,17 @@ def overview(db: Session, principal_id: str) -> dict[str, Any]:
             }
         )
     attention = []
-    for company in db.scalars(select(Company).where(Company.stage == "owned")).all():
+    portfolio_ids = select(InvestmentCase.company_id).where(
+        InvestmentCase.outcome == "portfolio", InvestmentCase.case_type != "exit"
+    )
+    attention_stmt = select(Company).where(Company.id.in_(portfolio_ids))
+    if filt.applied():
+        attention_stmt = attention_stmt.where(
+            Company.id.in_(
+                select(InvestmentCase.company_id).where(InvestmentCase.id.in_(matching_cases(filt)))
+            )
+        )
+    for company in db.scalars(attention_stmt).all():
         health, missing = _health(db, company)
         if health != "on_plan":
             attention.append(
@@ -218,22 +369,32 @@ def overview(db: Session, principal_id: str) -> dict[str, Any]:
                     "reason": _health_reason(health, missing),
                 }
             )
-    counts: dict[str, int] = {}
-    for stage, count in db.execute(
-        select(Company.stage, func.count()).group_by(Company.stage)
+    funnel = CompanyFilter(
+        q=filt.q,
+        agent_id=filt.agent_id,
+        phase=filt.phase,
+        outcome=None,
+        scope=filt.scope,
+        monitor=filt.monitor,
+        company_id=filt.company_id,
+        funnel=True,
+    )
+    counts: dict[str, int] = {phase: 0 for phase in PHASES}
+    for phase, count in db.execute(
+        select(InvestmentCase.phase, func.count())
+        .where(InvestmentCase.id.in_(matching_cases(funnel)))
+        .group_by(InvestmentCase.phase)
     ).all():
-        counts[stage] = count
-    order = [
-        "discovered",
-        "first_look",
-        "diligence",
-        "ic_review",
-        "closing",
-        "owned",
-        "exited",
-        "passed",
-        "paused",
-    ]
+        if phase in counts:
+            counts[phase] = count
+    portfolio_processes = (
+        db.scalar(
+            select(func.count())
+            .select_from(InvestmentCase)
+            .where(InvestmentCase.outcome == "portfolio", InvestmentCase.case_type != "exit")
+        )
+        or 0
+    )
     notifications = db.scalars(
         select(Notification)
         .where(Notification.principal_id == actor, Notification.read_at.is_(None))
@@ -243,7 +404,12 @@ def overview(db: Session, principal_id: str) -> dict[str, Any]:
         "decisions": decisions,
         "blockers": blockers,
         "portfolio_attention": attention,
-        "stage_counts": [{"stage": stage, "count": counts.get(stage, 0)} for stage in order],
+        "stage_counts": [{"stage": phase, "count": counts[phase]} for phase in PHASES],
+        "process_counts": {
+            "open_processes": sum(counts.values()),
+            "portfolio_processes": int(portfolio_processes),
+        },
+        "applied_filters": filt.applied(),
         "notifications": [
             {
                 "id": str(item.id),
@@ -259,79 +425,89 @@ def overview(db: Session, principal_id: str) -> dict[str, Any]:
 
 
 def list_companies(
-    db: Session, *, stage: str | None, query: str | None, cursor: str | None, limit: int
+    db: Session, *, filt: CompanyFilter, cursor: str | None, limit: int
 ) -> dict[str, Any]:
-    stmt = select(Company).order_by(Company.display_name, Company.id)
-    if stage:
-        stmt = stmt.where(Company.stage == stage)
-    if query:
-        stmt = stmt.where(Company.display_name.ilike(f"%{query}%"))
+    matched = matching_cases(filt)
+    stmt = (
+        select(InvestmentCase, Company)
+        .join(Company, Company.id == InvestmentCase.company_id)
+        .where(InvestmentCase.id.in_(matched))
+        .order_by(Company.display_name, InvestmentCase.id)
+    )
     if cursor:
         stmt = stmt.where(Company.display_name > cursor)
-    rows = db.scalars(stmt.limit(limit + 1)).all()
+    rows = db.execute(stmt.limit(limit + 1)).all()
     page = rows[:limit]
-    names = _names(db, {row.owner_id for row in page})
-    items = []
-    for company in page:
-        blocking = db.scalar(
-            select(func.count())
-            .select_from(Concern)
-            .join(InvestmentCase, InvestmentCase.id == Concern.case_id)
-            .where(
-                InvestmentCase.company_id == company.id,
-                Concern.status == "open",
-                Concern.blocking.is_(True),
-            )
+    names = _names(db, {company.owner_id for _, company in page})
+    items = [_process_list_item(db, case, company, names) for case, company in page]
+    company_count = db.scalar(
+        select(func.count(func.distinct(InvestmentCase.company_id))).where(
+            InvestmentCase.id.in_(matched)
         )
-        items.append(
-            {
-                "id": str(company.id),
-                "display_name": company.display_name,
-                "legal_name": company.legal_name,
-                "website": company.website,
-                "stage": company.stage,
-                "owner_name": names.get(company.owner_id, ""),
-                "open_blocking_concerns": int(blocking or 0),
-                "row_version": company.row_version,
-            }
-        )
-    next_cursor = page[-1].display_name if len(rows) > limit and page else None
-    return {"items": items, "next_cursor": next_cursor}
+    )
+    process_count = db.scalar(select(func.count()).select_from(matched.subquery()))
+    next_cursor = page[-1][1].display_name if len(rows) > limit and page else None
+    return {
+        "applied_filters": filt.applied(),
+        "counts": {
+            "distinct_companies": int(company_count or 0),
+            "processes": int(process_count or 0),
+        },
+        "items": items,
+        "next_cursor": next_cursor,
+    }
 
 
-def company_detail(db: Session, company_id: UUID) -> dict[str, Any]:
+def company_detail(
+    db: Session, company_id: UUID, filt: CompanyFilter | None = None
+) -> dict[str, Any]:
+    filt = filt or CompanyFilter(funnel=False)
     company = db.get(Company, company_id)
     if company is None:
         raise HaloError(404, "NOT_FOUND", "Not found.")
     owner = db.get(Principal, company.owner_id)
-    cases = db.scalars(
-        select(InvestmentCase).where(InvestmentCase.company_id == company.id)
-    ).all()
+    cases = db.scalars(select(InvestmentCase).where(InvestmentCase.company_id == company.id)).all()
     case_ids = [case.id for case in cases]
-    concerns = db.scalars(select(Concern).where(Concern.case_id.in_(case_ids))).all() if case_ids else []
-    runs = db.scalars(select(AgentRun).where(AgentRun.case_id.in_(case_ids))).all() if case_ids else []
+    concerns = (
+        db.scalars(select(Concern).where(Concern.case_id.in_(case_ids))).all() if case_ids else []
+    )
+    runs = (
+        db.scalars(select(AgentRun).where(AgentRun.case_id.in_(case_ids))).all() if case_ids else []
+    )
     run_ids = [run.id for run in runs]
-    artifacts = db.scalars(select(Artifact).where(Artifact.run_id.in_(run_ids))).all() if run_ids else []
+    artifacts = (
+        db.scalars(select(Artifact).where(Artifact.run_id.in_(run_ids))).all() if run_ids else []
+    )
     artifact_ids = [item.id for item in artifacts]
     reviews = (
-        db.scalars(select(Review).where(Review.artifact_id.in_(artifact_ids))).all() if artifact_ids else []
+        db.scalars(select(Review).where(Review.artifact_id.in_(artifact_ids))).all()
+        if artifact_ids
+        else []
     )
     evidence = db.scalars(
         select(EvidenceRecord).where(EvidenceRecord.workspace_id == company.workspace_id)
     ).all()
     documents = {
         row.id: row
-        for row in db.scalars(select(Document).where(Document.workspace_id == company.workspace_id)).all()
+        for row in db.scalars(
+            select(Document).where(Document.workspace_id == company.workspace_id)
+        ).all()
     }
     events = db.scalars(
         select(StageEvent)
         .where(StageEvent.company_id == company.id)
         .order_by(StageEvent.created_at)
     ).all()
-    packets = db.scalars(select(IcPacket).where(IcPacket.case_id.in_(case_ids))).all() if case_ids else []
+    packets = (
+        db.scalars(select(IcPacket).where(IcPacket.case_id.in_(case_ids))).all() if case_ids else []
+    )
     names = _names(
         db,
-        {company.owner_id, *(case.owner_id for case in cases), *(item.owner_id for item in concerns)},
+        {
+            company.owner_id,
+            *(case.owner_id for case in cases),
+            *(item.owner_id for item in concerns),
+        },
     )
     return {
         "company": {
@@ -339,6 +515,11 @@ def company_detail(db: Session, company_id: UUID) -> dict[str, Any]:
             "legal_name": company.legal_name,
             "display_name": company.display_name,
             "website": company.website,
+            "industry": company.industry,
+            "summary": company.summary,
+            "revenue_note": company.revenue_note,
+            "headcount_note": company.headcount_note,
+            "trajectory": company.trajectory,
             "stage": company.stage,
             "owner_name": owner.display_name if owner else "",
             "row_version": company.row_version,
@@ -352,10 +533,22 @@ def company_detail(db: Session, company_id: UUID) -> dict[str, Any]:
                 "due_at": _iso(case.due_at),
                 "row_version": case.row_version,
                 "policy_version": case.policy_version,
-                "ic_gaps": ic_gaps(db, case) if company.stage == "diligence" and case.case_type == "initial" else [],
+                "phase": case.phase,
+                "phase_label": phase_label(case.phase),
+                "outcome": case.outcome,
+                "on_hold": case.on_hold,
+                "primary": case.id == getattr(_primary_process(db, company.id), "id", None),
+                "ic_gaps": ic_gaps(db, case)
+                if case.phase == "due_diligence" and case.case_type == "initial"
+                else [],
             }
             for case in cases
         ],
+        "assignments": _assignments(db, company.id, filt),
+        "applied_filters": filt.applied(),
+        "filter_restricted": bool(
+            filt.agent_id or filt.scope or filt.phase or filt.q or filt.outcome
+        ),
         "stage_events": [
             {
                 "id": str(event.id),
@@ -504,8 +697,19 @@ def packet_detail(db: Session, packet_id: UUID) -> dict[str, Any]:
     }
 
 
-def portfolio(db: Session) -> dict[str, Any]:
-    companies = db.scalars(select(Company).where(Company.stage == "owned").order_by(Company.display_name)).all()
+def portfolio(db: Session, filt: CompanyFilter | None = None) -> dict[str, Any]:
+    filt = filt or CompanyFilter(funnel=False)
+    owned_ids = select(InvestmentCase.company_id).where(
+        InvestmentCase.outcome == "portfolio", InvestmentCase.case_type != "exit"
+    )
+    stmt = select(Company).where(Company.id.in_(owned_ids)).order_by(Company.display_name)
+    if filt.applied():
+        stmt = stmt.where(
+            Company.id.in_(
+                select(InvestmentCase.company_id).where(InvestmentCase.id.in_(matching_cases(filt)))
+            )
+        )
+    companies = db.scalars(stmt).all()
     items = []
     for company in companies:
         health, missing = _health(db, company)
@@ -518,10 +722,22 @@ def portfolio(db: Session) -> dict[str, Any]:
                 "reason": _health_reason(health, missing),
             }
         )
-    return {"companies": items, "synced_at": _iso(datetime.now(timezone.utc))}
+    return {
+        "companies": items,
+        "synced_at": _iso(datetime.now(timezone.utc)),
+        "applied_filters": filt.applied(),
+    }
 
 
-def value_ledger(db: Session) -> dict[str, Any]:
+def value_ledger(db: Session, filt: CompanyFilter | None = None) -> dict[str, Any]:
+    filt = filt or CompanyFilter(funnel=False)
+    allowed: set[UUID] | None = None
+    if filt.applied():
+        allowed = set(
+            db.scalars(
+                select(InvestmentCase.company_id).where(InvestmentCase.id.in_(matching_cases(filt)))
+            ).all()
+        )
     entries = db.scalars(select(ValueEntry)).all()
     items = []
     company_ids: set[UUID] = set()
@@ -529,6 +745,8 @@ def value_ledger(db: Session) -> dict[str, Any]:
         initiative = db.get(Initiative, entry.initiative_id)
         company = db.get(Company, initiative.company_id) if initiative else None
         if company is None or initiative is None:
+            continue
+        if allowed is not None and company.id not in allowed:
             continue
         company_ids.add(company.id)
         items.append(
@@ -568,13 +786,79 @@ def value_ledger(db: Session) -> dict[str, Any]:
                 "reason": "Estimated capacity is not cash saved. No verified budget change is on file.",
             }
         )
-    return {"entries": items, "gaps": gaps, "total": None}
+    return {"entries": items, "gaps": gaps, "total": None, "applied_filters": filt.applied()}
 
 
-def agent_directory(db: Session) -> dict[str, Any]:
-    counts = dict(db.execute(select(AgentRun.agent_name, func.count()).group_by(AgentRun.agent_name)).all())
+def agent_directory(db: Session, filt: CompanyFilter | None = None) -> dict[str, Any]:
+    filt = filt or CompanyFilter(funnel=False)
+    cards = []
+    for agent in AGENTS:
+        if filt.agent_id and filt.agent_id != agent["id"]:
+            cards.append({**agent, "visible_runs": 0, "company_count": 0, "project_count": 0})
+            continue
+        scoped = CompanyFilter(
+            q=filt.q,
+            agent_id=agent["id"],
+            phase=filt.phase,
+            outcome=filt.outcome,
+            scope=filt.scope,
+            monitor=filt.monitor,
+            company_id=filt.company_id,
+            funnel=False,
+        )
+        assignments = db.scalars(_assignment_query(scoped).order_by(AgentAssignment.title)).all()
+        run_count = 0
+        if assignments:
+            run_count = db.scalar(
+                select(func.count())
+                .select_from(AgentRun)
+                .where(AgentRun.assignment_id.in_([row.id for row in assignments]))
+            )
+        company_names = (
+            {
+                row.id: row.display_name
+                for row in db.scalars(
+                    select(Company).where(Company.id.in_({item.company_id for item in assignments}))
+                ).all()
+            }
+            if assignments
+            else {}
+        )
+        cards.append(
+            {
+                **agent,
+                "visible_runs": int(run_count or 0),
+                "company_count": len({row.company_id for row in assignments}),
+                "project_count": len(assignments),
+                "projects": [
+                    {
+                        "id": str(row.id),
+                        "company_id": str(row.company_id),
+                        "company_name": company_names.get(row.company_id, ""),
+                        "title": row.title,
+                        "status": row.status,
+                        "objective": row.objective,
+                        **_assignment_brief(db, row.id),
+                    }
+                    for row in assignments
+                ],
+            }
+        )
+    return {"agents": cards, "applied_filters": filt.applied()}
+
+
+def _assignment_brief(db: Session, assignment_id: UUID) -> dict[str, str]:
+    artifact = db.scalars(
+        select(Artifact)
+        .join(AgentRun, AgentRun.id == Artifact.run_id)
+        .where(AgentRun.assignment_id == assignment_id)
+        .order_by(Artifact.generated_at.desc())
+    ).first()
+    content = artifact.content_json if artifact is not None else {}
     return {
-        "agents": [{**agent, "visible_runs": int(counts.get(agent["id"], 0))} for agent in AGENTS]
+        "insight": str(content.get("insight") or content.get("summary") or ""),
+        "recommendation": str(content.get("recommendation") or ""),
+        "next_step": str(content.get("next_step") or ""),
     }
 
 
@@ -601,7 +885,9 @@ def run_detail(db: Session, run_id: UUID) -> dict[str, Any]:
         "company_name": company.display_name if company else None,
         "case_id": str(run.case_id) if run.case_id else None,
         "artifacts": [_artifact(item) for item in artifacts],
-        "comparison_locked": run.agent_name == "mutombo" and run.phase == "independent" and run.status != "reviewed",
+        "comparison_locked": run.agent_name == "mutombo"
+        and run.phase == "independent"
+        and run.status != "reviewed",
     }
 
 

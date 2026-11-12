@@ -37,14 +37,21 @@ def test_partner_sees_two_decisions_and_atlas_blockers(client: TestClient):
     body = overview.json()
     assert {item["company_name"] for item in body["decisions"]} == {"Vela", "Rally"}
     questions = {item["question"] for item in body["blockers"]}
-    assert questions == {"Reconcile retention definitions", "Obtain customer concentration evidence"}
+    assert questions == {
+        "Reconcile retention definitions",
+        "Obtain customer concentration evidence",
+    }
     court = next(item for item in body["portfolio_attention"] if item["company_name"] == "Court")
     assert court["health"] == "unknown"
 
 
 def test_analyst_cannot_see_atlas_by_list_direct_or_search(client: TestClient):
     login(client, "Jordan Hale")
-    atlas = next(item for item in client.get("/api/v1/companies").json()["items"] if item["display_name"] == "Atlas")
+    atlas = next(
+        item
+        for item in client.get("/api/v1/companies").json()["items"]
+        if item["display_name"] == "Atlas"
+    )
     evidence = client.get(f"/api/v1/companies/{atlas['id']}").json()["evidence"][0]["id"]
     login(client, "Blake Iverson")
     listed = [item["display_name"] for item in client.get("/api/v1/companies").json()["items"]]
@@ -60,9 +67,17 @@ def test_analyst_cannot_see_atlas_by_list_direct_or_search(client: TestClient):
 
 def test_atlas_submission_reports_the_blockers(client: TestClient):
     csrf = login(client, "Priya Shah")
-    atlas = next(item for item in client.get("/api/v1/companies").json()["items"] if item["display_name"] == "Atlas")
+    atlas = next(
+        item
+        for item in client.get("/api/v1/companies").json()["items"]
+        if item["display_name"] == "Atlas"
+    )
     detail = client.get(f"/api/v1/companies/{atlas['id']}").json()
-    lenses = next(item["content"]["lenses"] for item in detail["artifacts"] if item["kind"] == "xavier_scorecard")
+    lenses = next(
+        item["content"]["lenses"]
+        for item in detail["artifacts"]
+        if item["kind"] == "xavier_scorecard"
+    )
     assert [(item["lens"], item["score"]) for item in lenses] == [
         ("CX", 3),
         ("EX", None),
@@ -90,7 +105,11 @@ def test_atlas_submission_reports_the_blockers(client: TestClient):
 
 def test_review_does_not_clear_a_blocker(client: TestClient):
     csrf = login(client, "Priya Shah")
-    atlas = next(item for item in client.get("/api/v1/companies").json()["items"] if item["display_name"] == "Atlas")
+    atlas = next(
+        item
+        for item in client.get("/api/v1/companies").json()["items"]
+        if item["display_name"] == "Atlas"
+    )
     detail = client.get(f"/api/v1/companies/{atlas['id']}").json()
     artifact = next(item for item in detail["artifacts"] if item["kind"] == "ainge_report")
     reviewed = client.post(
@@ -109,7 +128,11 @@ def test_review_does_not_clear_a_blocker(client: TestClient):
 
 def test_text_alone_cannot_resolve_a_concern(client: TestClient):
     csrf = login(client, "Priya Shah")
-    atlas = next(item for item in client.get("/api/v1/companies").json()["items"] if item["display_name"] == "Atlas")
+    atlas = next(
+        item
+        for item in client.get("/api/v1/companies").json()["items"]
+        if item["display_name"] == "Atlas"
+    )
     concern = client.get(f"/api/v1/companies/{atlas['id']}").json()["concerns"][0]
     response = client.post(
         f"/api/v1/concerns/{concern['id']}/dispositions",
@@ -127,10 +150,20 @@ def test_text_alone_cannot_resolve_a_concern(client: TestClient):
 
 def test_vela_approval_is_closing_not_owned_and_replay_is_stable(client: TestClient):
     csrf = login(client, "Jordan Hale")
-    before = {item["display_name"] for item in client.get("/api/v1/companies").json()["items"] if item["stage"] == "owned"}
-    decision = next(item for item in client.get("/api/v1/overview").json()["decisions"] if item["company_name"] == "Vela")
+    before = {
+        item["display_name"]
+        for item in client.get("/api/v1/companies").json()["items"]
+        if item["stage"] == "owned"
+    }
+    decision = next(
+        item
+        for item in client.get("/api/v1/overview").json()["decisions"]
+        if item["company_name"] == "Vela"
+    )
     packet = client.get(f"/api/v1/ic-packets/{decision['packet_id']}").json()
-    dissent = next(item for item in packet["artifacts"] if item["kind"] == "independent_risk_report")
+    dissent = next(
+        item for item in packet["artifacts"] if item["kind"] == "independent_risk_report"
+    )
     assert dissent["sealed_at"]
     body = {
         "packet_sha256": packet["manifest_sha256"],
@@ -146,7 +179,7 @@ def test_vela_approval_is_closing_not_owned_and_replay_is_stable(client: TestCli
         headers={"x-csrf-token": csrf, "idempotency-key": key},
     )
     assert first.status_code == 200
-    assert first.json()["company_stage"] == "closing"
+    assert first.json()["company_stage"] == "term_sheet"
     assert first.json()["owned"] is False
     replay = client.post(
         f"/api/v1/ic-packets/{packet['id']}/decisions",
@@ -173,15 +206,112 @@ def test_vela_approval_is_closing_not_owned_and_replay_is_stable(client: TestCli
     )
     assert stale.status_code == 409
     assert stale.json()["code"] == "STALE_PACKET"
-    owned = {item["display_name"] for item in client.get("/api/v1/companies").json()["items"] if item["stage"] == "owned"}
+    owned = {
+        item["display_name"]
+        for item in client.get("/api/v1/companies").json()["items"]
+        if item["stage"] == "owned"
+    }
     assert owned == before
     saved = client.get(f"/api/v1/ic-packets/{packet['id']}").json()
-    assert any(item["kind"] == "independent_risk_report" and item["sealed_at"] for item in saved["artifacts"])
+    assert any(
+        item["kind"] == "independent_risk_report" and item["sealed_at"]
+        for item in saved["artifacts"]
+    )
+
+
+def test_atlas_projects_and_shared_agent_filter(client: TestClient):
+    login(client, "Jordan Hale")
+    atlas = next(
+        item
+        for item in client.get("/api/v1/companies").json()["items"]
+        if item["display_name"] == "Atlas"
+    )
+    detail = client.get(f"/api/v1/companies/{atlas['id']}").json()
+    mutombo = [item for item in detail["assignments"] if item["agent_id"] == "mutombo"]
+    assert {item["title"] for item in mutombo} == {"Mutombo project", "Reference challenge"}
+    assert all(item["status"] == "active" for item in mutombo)
+    assert any(item["working_now"] for item in mutombo)
+    xavier = next(item for item in detail["assignments"] if item["agent_id"] == "xavier")
+    assert xavier["status"] == "completed"
+    active = client.get("/api/v1/companies", params={"agent": "mutombo", "scope": "active"}).json()
+    assert "Atlas" in {item["display_name"] for item in active["items"]}
+    assert (
+        active["counts"]["processes"] == active["counts"]["distinct_companies"]
+        or active["counts"]["processes"] >= 1
+    )
+    quiet = client.get("/api/v1/companies", params={"agent": "xavier", "scope": "active"}).json()
+    assert "Atlas" not in {item["display_name"] for item in quiet["items"]}
+    directory = client.get("/api/v1/agents", params={"agent": "mutombo", "scope": "active"}).json()
+    mutombo_card = next(item for item in directory["agents"] if item["id"] == "mutombo")
+    xavier_card = next(item for item in directory["agents"] if item["id"] == "xavier")
+    assert mutombo_card["project_count"] >= 2
+    assert mutombo_card["company_count"] >= 1
+    assert xavier_card["project_count"] == 0
+    assert xavier_card["company_count"] == 0
+    hidden = login(client, "Blake Iverson")
+    assert hidden
+    blake = client.get("/api/v1/companies", params={"agent": "mutombo", "scope": "active"}).json()
+    assert "Atlas" not in {item["display_name"] for item in blake["items"]}
+
+
+def test_ic_approval_is_not_portfolio_until_close_is_confirmed(client: TestClient):
+    csrf = login(client, "Jordan Hale")
+    decision = next(
+        item
+        for item in client.get("/api/v1/overview").json()["decisions"]
+        if item["company_name"] == "Vela"
+    )
+    packet = client.get(f"/api/v1/ic-packets/{decision['packet_id']}").json()
+    approved = client.post(
+        f"/api/v1/ic-packets/{packet['id']}/decisions",
+        json={
+            "packet_sha256": packet["manifest_sha256"],
+            "decision": "approve",
+            "rationale": "Approve Vela into the term sheet. Ownership still needs a close.",
+            "expected_case_version": packet["case"]["row_version"],
+            "policy_version": packet["policy_version"],
+        },
+        headers={"x-csrf-token": csrf, "idempotency-key": str(uuid.uuid4())},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["company_stage"] == "term_sheet"
+    names = {item["display_name"] for item in client.get("/api/v1/portfolio").json()["companies"]}
+    assert "Vela" not in names
+    case_id = packet["case"]["id"]
+    version = approved.json()["case_version"]
+    closing = client.post(
+        f"/api/v1/cases/{case_id}/stage-actions",
+        json={
+            "action": "advance_closing",
+            "rationale": "Open negotiation after the term sheet.",
+            "expected_case_version": version,
+        },
+        headers={"x-csrf-token": csrf, "idempotency-key": str(uuid.uuid4())},
+    )
+    assert closing.status_code == 200
+    assert closing.json()["company_stage"] == "closing"
+    confirmed = client.post(
+        f"/api/v1/cases/{case_id}/stage-actions",
+        json={
+            "action": "confirm_close",
+            "rationale": "Confirm the close and record the portfolio position.",
+            "expected_case_version": closing.json()["case_version"],
+        },
+        headers={"x-csrf-token": csrf, "idempotency-key": str(uuid.uuid4())},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["company_stage"] == "owned"
+    owned = {item["display_name"] for item in client.get("/api/v1/portfolio").json()["companies"]}
+    assert "Vela" in owned
 
 
 def test_follow_on_approval_does_not_move_ownership_backward(client: TestClient):
     csrf = login(client, "Jordan Hale")
-    rally = next(item for item in client.get("/api/v1/overview").json()["decisions"] if item["company_name"] == "Rally")
+    rally = next(
+        item
+        for item in client.get("/api/v1/overview").json()["decisions"]
+        if item["company_name"] == "Rally"
+    )
     packet = client.get(f"/api/v1/ic-packets/{rally['packet_id']}").json()
     response = client.post(
         f"/api/v1/ic-packets/{packet['id']}/decisions",
@@ -204,7 +334,11 @@ def test_admin_cannot_decide_and_value_is_not_summed(client: TestClient):
     assert client.get("/api/v1/administration").status_code == 200
     assert client.get("/api/v1/overview").json()["decisions"] == []
     csrf = login(client, "Jordan Hale")
-    rally = next(item for item in client.get("/api/v1/overview").json()["decisions"] if item["company_name"] == "Rally")
+    rally = next(
+        item
+        for item in client.get("/api/v1/overview").json()["decisions"]
+        if item["company_name"] == "Rally"
+    )
     packet = client.get(f"/api/v1/ic-packets/{rally['packet_id']}").json()
     admin = login(client, "Avery Brooks")
     denied = client.post(
@@ -228,8 +362,12 @@ def test_admin_cannot_decide_and_value_is_not_summed(client: TestClient):
     assert metrics["capacity_released"]["classification"] == "estimated"
     assert {item["metric"] for item in ledger["gaps"]} == {"incremental_revenue", "cash_savings"}
     portfolio = client.get("/api/v1/portfolio").json()["companies"]
-    assert next(item for item in portfolio if item["display_name"] == "Court")["health"] == "unknown"
-    assert next(item for item in portfolio if item["display_name"] == "Rally")["health"] == "on_plan"
+    assert (
+        next(item for item in portfolio if item["display_name"] == "Court")["health"] == "unknown"
+    )
+    assert (
+        next(item for item in portfolio if item["display_name"] == "Rally")["health"] == "on_plan"
+    )
     assert client.get("/api/v1/overview").json()["notifications"] == []
     login(client, "Sam Okonkwo")
     notes = client.get("/api/v1/overview").json()["notifications"]
@@ -257,7 +395,9 @@ def test_direct_stage_update_is_rejected_and_session_guc_does_not_leak():
             connection.execute(text("UPDATE companies SET stage = 'owned'"))
         transaction.rollback()
         transaction = connection.begin()
-        leaked = connection.execute(text("SELECT current_setting('halo.principal_id', true)")).scalar()
+        leaked = connection.execute(
+            text("SELECT current_setting('halo.principal_id', true)")
+        ).scalar()
         transaction.rollback()
     assert leaked in (None, "")
 

@@ -1,7 +1,9 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../api/client";
+import { getPortfolio } from "../api/generated";
+import { filterQuery } from "../api/queries";
 import { formatWhen } from "../api/types";
+import { FilterBar } from "../components/FilterBar";
 import { MetricFreshness } from "../components/MetricFreshness";
 
 type PortfolioView = {
@@ -10,29 +12,36 @@ type PortfolioView = {
 };
 
 export function Portfolio({ principalId }: { principalId: string }) {
+  const [params] = useSearchParams();
+  const search = params.toString();
   const query = useQuery({
-    queryKey: ["portfolio", principalId],
-    queryFn: () => api<PortfolioView>("/api/v1/portfolio"),
+    queryKey: ["portfolio", principalId, search],
+    queryFn: () => getPortfolio(filterQuery(search)) as Promise<PortfolioView>,
   });
   if (query.isLoading) return <div className="skeleton" />;
+  const companies = query.data?.companies ?? [];
   return (
     <>
       <header className="page-head">
         <div>
+          <p className="kicker">Pipeline</p>
           <h1>Portfolio</h1>
-          <p>Owned companies only. Unknown wins when required reporting is missing or stale.</p>
+          <p>A confirmed close. An IC approval and a term sheet do not put a company here.</p>
         </div>
         <p className="meta">Synced {formatWhen(query.data?.synced_at)}</p>
       </header>
-      {(query.data?.companies ?? []).map((company) => (
-        <article className="card" key={company.company_id}>
-          <h2>
-            <Link to={`/companies/${company.company_id}`}>{company.display_name}</Link>
-          </h2>
-          <MetricFreshness health={company.health} reason={company.reason} />
-        </article>
-      ))}
-      {query.data?.companies.length === 0 && <p className="empty">No owned companies are in your workspaces.</p>}
+      <FilterBar />
+      {companies.length === 0 && <p className="empty">No owned companies are in your workspaces.</p>}
+      {companies.length > 0 && (
+        <div className="roster card">
+          {companies.map((company) => (
+            <Link className="roster-row" key={company.company_id} to={search ? `/companies/${company.company_id}?${search}` : `/companies/${company.company_id}`}>
+              <strong>{company.display_name}</strong>
+              <MetricFreshness health={company.health} reason={company.reason} />
+            </Link>
+          ))}
+        </div>
+      )}
     </>
   );
 }

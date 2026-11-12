@@ -1,34 +1,50 @@
 :root {
-  --bg: #f4f7fb;
-  --navy: #0b2146;
-  --navy-2: #14315f;
-  --ink: #152b4d;
-  --blue: #245ad9;
-  --blue-ink: #1c46ab;
-  --muted: #66788f;
-  --line: #dde5f0;
+  /* Utah Mammoth: Rock Black, Mountain Blue (Pantone 292 C), Salt White. */
+  --bg: #f4f8fb;
+  --paper: #ffffff;
+  --paper-2: #e7f3fb;
+  --navy: #010101;
+  --navy-2: #000000;
+  --ink: #010101;
+  --blue: #69b3e7;
+  --blue-ink: #0b4f78;
+  --muted: #3e5364;
+  --line: #d4e4f0;
+  --line-strong: #9ec8e6;
+  --gold: #69b3e7;
+  --gold-soft: rgba(105, 179, 231, 0.22);
   --white: #ffffff;
-  --purple: #7254b5;
-  --red: #9d2c3a;
-  --red-bg: #fdecee;
-  --amber: #8a5a12;
-  --amber-bg: #fff6e8;
-  --green: #1d6b45;
-  --green-bg: #e8f6ee;
-  --shadow: 0 10px 30px rgba(11, 33, 70, 0.06);
-  --radius: 14px;
-  --rail: 240px;
-  font-family: "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+  --purple: #0b4f78;
+  --red: #010101;
+  --red-bg: #e7f3fb;
+  --amber: #010101;
+  --amber-bg: #e7f3fb;
+  --green: #010101;
+  --green-bg: #e7f3fb;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 1px 2px rgba(0, 0, 0, 0.04), 0 16px 36px rgba(0, 0, 0, 0.05);
+  --radius: 18px;
+  --rail: 248px;
+  --serif: "Newsreader Variable", "Iowan Old Style", Palatino, "Palatino Linotype", serif;
+  --sans: "Schibsted Grotesk Variable", "Segoe UI", sans-serif;
+  font-family: var(--sans);
   color: var(--ink);
   background: var(--bg);
   font-size: 16px;
-  line-height: 1.45;
+  line-height: 1.5;
+  font-optical-sizing: auto;
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; }
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg);
+}
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: var(--blue-ink); text-decoration: none; }
 a:hover { text-decoration: underline; }
-:focus-visible { outline: 3px solid #8eacf5; outline-offset: 2px; }
+::selection { background: #c5e4f6; color: #010101; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
