@@ -89,12 +89,32 @@ def seed(settings: Settings | None = None) -> bool:
                 return False
             _load(db, store)
             _load_book(db, store)
+            apply_company_profiles(db)
             db.commit()
         return True
     with open_migration_session() as db:
         added = _load_book(db, store)
+        profiles = apply_company_profiles(db)
         db.commit()
-    return added > 0
+    return added > 0 or profiles > 0
+
+
+def apply_company_profiles(db: Session) -> int:
+    """Write the business snapshot onto the company. A process does not own it."""
+    from halo.services.company_profiles import PROFILES
+
+    updated = 0
+    for company in db.scalars(select(Company)).all():
+        profile = PROFILES.get(company.display_name)
+        if profile is None:
+            continue
+        changed = any(getattr(company, key) != value for key, value in profile.items())
+        if not changed:
+            continue
+        for key, value in profile.items():
+            setattr(company, key, value)
+        updated += 1
+    return updated
 
 
 def database_has_live_organization(db: Session) -> bool:

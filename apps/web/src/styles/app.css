@@ -124,7 +124,28 @@
   transform: translateY(-50%);
   box-shadow: 0 0 0 4px var(--gold-soft);
 }
-.page-head { display: flex; justify-content: space-between; gap: 24px; align-items: flex-end; margin-bottom: 16px; }
+.page-head { display: flex; justify-content: space-between; gap: 24px; align-items: flex-end; margin-bottom: 14px; }
+.company-overview { margin: 0 0 18px; max-width: 46rem; }
+.company-overview ul { list-style: none; margin: 0; padding: 0; }
+.main .company-overview li {
+  position: relative;
+  margin: 0;
+  padding: 0 0 8px 16px;
+  border: 0;
+  font-size: 15px;
+  line-height: 1.45;
+}
+.company-overview li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+.company-overview strong { font-weight: 680; }
 .page-head-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
 .page-head h1, .signin h1 {
   margin: 0;

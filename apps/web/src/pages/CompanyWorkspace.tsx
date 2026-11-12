@@ -5,6 +5,7 @@ import { useCompany } from "../api/queries";
 import type { Evidence, Me } from "../api/types";
 import { hasCapability } from "../api/types";
 import { CompanyHeader } from "../components/CompanyHeader";
+import { CompanyOverview } from "../components/CompanyOverview";
 import { EvidenceDrawer } from "../components/EvidenceDrawer";
 import { FilterBar } from "../components/FilterBar";
 import { ReviewDialog } from "../components/ReviewDialog";
@@ -63,6 +64,13 @@ export function CompanyWorkspace({ principalId, me }: { principalId: string; me:
         owner={data.company.owner_name}
         otherOpen={otherOpen}
         actions={<StageActions me={me} openProcess={openProcess} onError={setError} onGaps={setGaps} />}
+      />
+      <CompanyOverview
+        industry={data.company.industry ?? ""}
+        summary={data.company.summary ?? ""}
+        revenueNote={data.company.revenue_note ?? ""}
+        headcountNote={data.company.headcount_note ?? ""}
+        trajectory={data.company.trajectory ?? ""}
       />
       <StageTimeline phase={primary?.phase ?? ""} />
       <FilterBar />

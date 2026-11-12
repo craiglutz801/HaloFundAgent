@@ -109,6 +109,11 @@ export type CompanyDetail = {
     legal_name: string;
     display_name: string;
     website: string;
+    industry?: string;
+    summary?: string;
+    revenue_note?: string;
+    headcount_note?: string;
+    trajectory?: string;
     stage: string;
     owner_name: string;
     row_version: number;
